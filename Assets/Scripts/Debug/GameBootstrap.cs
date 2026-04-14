@@ -105,8 +105,9 @@ namespace MunCraft.Debug
         {
             _playerObj = new GameObject("Player");
 
-            // Position on top of the sphere
-            Vector3 spawnPos = Vector3.up * (SphereRadius * BlockSize + PlayerHeight);
+            // Position on top of the sphere (surface is at ~radius + circumradius)
+            float surfaceHeight = SphereRadius * BlockSize + 0.559f * BlockSize;
+            Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight);
             _playerObj.transform.position = spawnPos;
 
             // Player controller
@@ -193,7 +194,8 @@ namespace MunCraft.Debug
             CreateChunkRenderers();
 
             // Reset player
-            Vector3 spawnPos = Vector3.up * (SphereRadius * BlockSize + PlayerHeight);
+            float surfaceHeight = SphereRadius * BlockSize + 0.559f * BlockSize;
+            Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight);
             var controller = _playerObj.GetComponent<PlayerController>();
             controller.Teleport(spawnPos, Vector3.up);
         }
