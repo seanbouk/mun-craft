@@ -18,6 +18,7 @@ Shader "MunCraft/FlatBlock"
         {
             Name "FlatBlock"
             Tags { "LightMode" = "UniversalForward" }
+            Cull Off
 
             HLSLPROGRAM
             #pragma vertex vert

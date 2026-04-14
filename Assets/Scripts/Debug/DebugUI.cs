@@ -22,7 +22,7 @@ namespace MunCraft.Debug
         public int GravityVectorGridSize = 5;
         public float GravityVectorScale = 0.5f;
 
-        bool _showUI = false;
+        bool _showUI = true;
         float _sphereRadius = 12;
         float _fps;
         float _fpsTimer;
@@ -69,9 +69,9 @@ namespace MunCraft.Debug
             // Gravity
             if (GravityFieldRef != null)
             {
-                GUILayout.Label($"Gravity Constant: {GravityFieldRef.GravityConstant:F1}");
+                GUILayout.Label($"Gravity Constant: {GravityFieldRef.GravityConstant:F3}");
                 GravityFieldRef.GravityConstant = GUILayout.HorizontalSlider(
-                    GravityFieldRef.GravityConstant, 0.1f, 50f);
+                    GravityFieldRef.GravityConstant, 0.01f, 2f);
 
                 GUILayout.Label($"Barnes-Hut Theta: {GravityFieldRef.Theta:F2}");
                 GravityFieldRef.Theta = GUILayout.HorizontalSlider(
@@ -102,11 +102,23 @@ namespace MunCraft.Debug
             {
                 Vector3 pos = Player.transform.position;
                 GUILayout.Label($"Position: ({pos.x:F1}, {pos.y:F1}, {pos.z:F1})");
+                GUILayout.Label($"Dist from origin: {pos.magnitude:F2}");
                 Vector3 grav = Player.GravityDirection;
                 GUILayout.Label($"Gravity: ({grav.x:F2}, {grav.y:F2}, {grav.z:F2})");
                 GUILayout.Label($"Gravity Mag: {grav.magnitude:F2}");
                 GUILayout.Label($"Grounded: {Player.IsGrounded}");
                 GUILayout.Label($"Speed: {Player.Velocity.magnitude:F1}");
+
+                // Collision debug
+                var col = Player.GetComponent<MunCraft.Player.PlayerCollision>();
+                if (col != null)
+                {
+                    GUILayout.Label($"Blocks checked: {col.LastBlocksChecked}");
+                    GUILayout.Label($"Collisions: {col.LastCollisionsFound}");
+                    GUILayout.Label($"Deepest pen: {col.LastDeepestPenetration:F3}");
+                    GUILayout.Label($"Push dir: ({col.LastPushDir.x:F2}, {col.LastPushDir.y:F2}, {col.LastPushDir.z:F2})");
+                    col.ShowDebug = GUILayout.Toggle(col.ShowDebug, "Show Collision Debug");
+                }
             }
 
             GUILayout.Space(10);

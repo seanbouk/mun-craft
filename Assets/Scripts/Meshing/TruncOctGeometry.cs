@@ -86,10 +86,11 @@ namespace MunCraft.Meshing
             faces[5] = FindSquareFace(verts, Vector3.back);      // -Z
 
             // Hex faces: 8 faces in the (±1,±1,±1) directions
+            // Loop order MUST match BlockAddress.GetNeighbors: dz outer, dy middle, dx inner
             int fi = 6;
-            for (int sx = -1; sx <= 1; sx += 2)
-            for (int sy = -1; sy <= 1; sy += 2)
             for (int sz = -1; sz <= 1; sz += 2)
+            for (int sy = -1; sy <= 1; sy += 2)
+            for (int sx = -1; sx <= 1; sx += 2)
             {
                 Vector3 dir = new Vector3(sx, sy, sz).normalized;
                 faces[fi++] = FindHexFace(verts, dir);
@@ -184,10 +185,11 @@ namespace MunCraft.Meshing
             normals[5] = Vector3.back;
 
             // Hex faces: diagonal directions
+            // Loop order MUST match BlockAddress.GetNeighbors: dz outer, dy middle, dx inner
             int i = 6;
-            for (int sx = -1; sx <= 1; sx += 2)
-            for (int sy = -1; sy <= 1; sy += 2)
             for (int sz = -1; sz <= 1; sz += 2)
+            for (int sy = -1; sy <= 1; sy += 2)
+            for (int sx = -1; sx <= 1; sx += 2)
             {
                 normals[i++] = new Vector3(sx, sy, sz).normalized;
             }

@@ -6,6 +6,7 @@ namespace MunCraft.Player
     /// <summary>
     /// First-person controller with dynamic gravity.
     /// No Rigidbody — custom velocity integration against the gravity field.
+    /// Uses substeps to prevent tunneling through thin surfaces.
     /// </summary>
     public class PlayerController : MonoBehaviour
     {
@@ -14,15 +15,26 @@ namespace MunCraft.Player
         public float JumpForce = 5f;
         public float GroundDrag = 8f;
         public float AirDrag = 0.5f;
+        public float MaxVelocity = 20f;
 
         [Header("Gravity")]
         public float GravityMultiplier = 1f;
         public float OrientationSmoothTime = 0.15f;
 
+        [Header("Grounding")]
+        [Tooltip("Small downward force applied when grounded to keep player on surface")]
+        public float GroundSnapForce = 2f;
+
+        [Header("Physics")]
+        [Tooltip("Max distance per substep — smaller = more accurate but slower")]
+        public float MaxStepDistance = 0.3f;
+
         Vector3 _velocity;
         Vector3 _currentUp;
         bool _isGrounded;
+        bool _wasGrounded;
         PlayerCollision _collision;
+        bool _loggedStartup;
 
         public Vector3 Velocity => _velocity;
         public Vector3 CurrentUp => _currentUp;
@@ -31,12 +43,24 @@ namespace MunCraft.Player
 
         void Awake()
         {
-            _collision = GetComponent<PlayerCollision>();
             _currentUp = Vector3.up;
         }
 
         void Update()
         {
+            float dt = Time.deltaTime;
+            if (dt <= 0) return;
+
+            // Lazy-find collision component (avoids Awake ordering issues)
+            if (_collision == null)
+                _collision = GetComponent<PlayerCollision>();
+
+            if (!_loggedStartup)
+            {
+                _loggedStartup = true;
+                UnityEngine.Debug.Log($"[PlayerController] Started. Collision={(_collision != null ? "FOUND" : "NULL")}");
+            }
+
             // Get gravity at current position
             Vector3 gravity = Vector3.zero;
             if (GravityField.Instance != null)
@@ -49,7 +73,7 @@ namespace MunCraft.Player
 
             // Smoothly rotate to align with gravity
             _currentUp = Vector3.Slerp(_currentUp, targetUp,
-                1f - Mathf.Exp(-10f / Mathf.Max(OrientationSmoothTime, 0.01f) * Time.deltaTime));
+                1f - Mathf.Exp(-10f / Mathf.Max(OrientationSmoothTime, 0.01f) * dt));
             _currentUp.Normalize();
 
             // Build orientation: keep looking in current forward direction, but align up with gravity
@@ -62,17 +86,28 @@ namespace MunCraft.Player
             // Apply movement input
             float h = Input.GetAxisRaw("Horizontal");
             float v = Input.GetAxisRaw("Vertical");
-            Vector3 moveDir = (right * h + forward * v).normalized;
+            Vector3 moveDir = (right * h + forward * v);
+            if (moveDir.sqrMagnitude > 1f) moveDir.Normalize();
 
             if (_isGrounded)
             {
-                _velocity += moveDir * MoveSpeed * Time.deltaTime * 10f;
+                // Cancel any velocity into the ground
+                float velIntoGround = Vector3.Dot(_velocity, -_currentUp);
+                if (velIntoGround > 0)
+                    _velocity += _currentUp * velIntoGround;
+
+                // Movement on surface
+                _velocity += moveDir * MoveSpeed * dt * 10f;
 
                 // Ground drag
                 Vector3 lateralVel = _velocity - Vector3.Dot(_velocity, _currentUp) * _currentUp;
                 Vector3 verticalVel = Vector3.Dot(_velocity, _currentUp) * _currentUp;
-                lateralVel *= Mathf.Max(0, 1f - GroundDrag * Time.deltaTime);
+                lateralVel *= Mathf.Max(0, 1f - GroundDrag * dt);
                 _velocity = lateralVel + verticalVel;
+
+                // Small snap force to keep player pressed against surface
+                // (collision will resolve this, but it keeps ground contact stable)
+                _velocity -= _currentUp * GroundSnapForce * dt;
 
                 // Jump
                 if (Input.GetButtonDown("Jump"))
@@ -80,38 +115,64 @@ namespace MunCraft.Player
                     _velocity += _currentUp * JumpForce;
                     _isGrounded = false;
                 }
+
+                // Do NOT apply gravity when grounded — collision handles it
             }
             else
             {
+                // Apply gravity only when airborne
+                _velocity += gravity * GravityMultiplier * dt;
+
                 // Air control (reduced)
-                _velocity += moveDir * MoveSpeed * 0.3f * Time.deltaTime * 10f;
-                _velocity *= Mathf.Max(0, 1f - AirDrag * Time.deltaTime);
+                _velocity += moveDir * MoveSpeed * 0.3f * dt * 10f;
+                _velocity *= Mathf.Max(0, 1f - AirDrag * dt);
             }
 
-            // Apply gravity
-            _velocity += gravity * GravityMultiplier * Time.deltaTime;
+            // Clamp velocity
+            if (_velocity.sqrMagnitude > MaxVelocity * MaxVelocity)
+                _velocity = _velocity.normalized * MaxVelocity;
 
-            // Integrate position
-            Vector3 newPos = transform.position + _velocity * Time.deltaTime;
+            // Substep integration to prevent tunneling
+            Vector3 totalMove = _velocity * dt;
+            float totalDist = totalMove.magnitude;
+            int steps = Mathf.Max(1, Mathf.CeilToInt(totalDist / MaxStepDistance));
+            Vector3 stepMove = totalMove / steps;
 
-            // Collision resolution
-            if (_collision != null)
+            Vector3 pos = transform.position;
+            bool grounded = false;
+
+            for (int i = 0; i < steps; i++)
             {
-                var result = _collision.ResolveCollision(newPos, _currentUp);
-                newPos = result.Position;
-                _isGrounded = result.IsGrounded;
+                Vector3 newPos = pos + stepMove;
 
-                // Zero out velocity into collision surfaces
-                if (result.HitSomething)
+                if (_collision != null)
                 {
-                    // Project velocity to remove component going into the collision
-                    float velAlongNormal = Vector3.Dot(_velocity, result.PushDirection);
-                    if (velAlongNormal < 0)
-                        _velocity -= result.PushDirection * velAlongNormal;
+                    var result = _collision.ResolveCollision(newPos, _currentUp);
+                    newPos = result.Position;
+
+                    if (result.IsGrounded)
+                        grounded = true;
+
+                    if (result.HitSomething)
+                    {
+                        // Zero out velocity into collision surface
+                        float velAlongNormal = Vector3.Dot(_velocity, result.PushDirection);
+                        if (velAlongNormal < 0)
+                            _velocity -= result.PushDirection * velAlongNormal;
+
+                        // Recalculate remaining step moves with corrected velocity
+                        int remaining = steps - i - 1;
+                        if (remaining > 0)
+                            stepMove = _velocity * dt / steps;
+                    }
                 }
+
+                pos = newPos;
             }
 
-            transform.position = newPos;
+            _wasGrounded = _isGrounded;
+            _isGrounded = grounded;
+            transform.position = pos;
 
             // Apply orientation
             Quaternion targetRot = Quaternion.LookRotation(forward, _currentUp);
@@ -127,6 +188,7 @@ namespace MunCraft.Player
             _velocity = Vector3.zero;
             _currentUp = up;
             _isGrounded = false;
+            _wasGrounded = false;
         }
     }
 }

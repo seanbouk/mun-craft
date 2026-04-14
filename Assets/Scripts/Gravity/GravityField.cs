@@ -11,7 +11,8 @@ namespace MunCraft.Gravity
     public class GravityField : MonoBehaviour
     {
         [Header("Gravity Settings")]
-        public float GravityConstant = 9.81f;
+        [Tooltip("For ~7000 blocks at radius 12, 0.2 gives ~9.8 m/s² at surface")]
+        public float GravityConstant = 0.2f;
 
         [Range(0f, 2f)]
         public float Theta = 0.5f;

@@ -20,7 +20,7 @@ namespace MunCraft.Debug
         public float BlockSize = 1.0f;
 
         [Header("Gravity")]
-        public float GravityConstant = 9.81f;
+        public float GravityConstant = 0.2f;
         public float BarnesHutTheta = 0.5f;
 
         [Header("Player")]
@@ -105,21 +105,22 @@ namespace MunCraft.Debug
         {
             _playerObj = new GameObject("Player");
 
-            // Position on top of the sphere (surface is at ~radius + circumradius)
+            // Position just above the surface
             float surfaceHeight = SphereRadius * BlockSize + 0.559f * BlockSize;
-            Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight);
+            Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight * 0.5f + 0.5f);
             _playerObj.transform.position = spawnPos;
+
+            // Player collision — MUST be added before PlayerController,
+            // because PlayerController.Awake() does GetComponent<PlayerCollision>()
+            var collision = _playerObj.AddComponent<PlayerCollision>();
+            collision.Height = PlayerHeight;
+            collision.Radius = PlayerRadius;
+            collision.Initialize(_chunkManager);
 
             // Player controller
             var controller = _playerObj.AddComponent<PlayerController>();
             controller.MoveSpeed = MoveSpeed;
             controller.JumpForce = JumpForce;
-
-            // Player collision
-            var collision = _playerObj.AddComponent<PlayerCollision>();
-            collision.Height = PlayerHeight;
-            collision.Radius = PlayerRadius;
-            collision.Initialize(_chunkManager);
 
             // Camera
             var cameraObj = new GameObject("PlayerCamera");
@@ -193,9 +194,9 @@ namespace MunCraft.Debug
             _gravityField.Initialize(_chunkManager, filledBlocks);
             CreateChunkRenderers();
 
-            // Reset player
+            // Reset player well above the sphere
             float surfaceHeight = SphereRadius * BlockSize + 0.559f * BlockSize;
-            Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight);
+            Vector3 spawnPos = Vector3.up * (surfaceHeight + 20f);
             var controller = _playerObj.GetComponent<PlayerController>();
             controller.Teleport(spawnPos, Vector3.up);
         }
