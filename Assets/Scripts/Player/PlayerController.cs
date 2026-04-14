@@ -30,10 +30,14 @@ namespace MunCraft.Player
         [Tooltip("Max distance per substep — smaller = more accurate but slower")]
         public float MaxStepDistance = 0.3f;
 
+        [Header("Grounding")]
+        [Tooltip("Seconds to stay 'grounded' after losing ground contact")]
+        public float CoyoteTime = 0.25f;
+
         Vector3 _velocity;
         Vector3 _currentUp;
         bool _isGrounded;
-        bool _wasGrounded;
+        float _groundedTimer;
         PlayerCollision _collision;
         bool _loggedStartup;
 
@@ -139,6 +143,7 @@ namespace MunCraft.Player
                 {
                     _velocity += _currentUp * JumpForce;
                     _isGrounded = false;
+                    _groundedTimer = 0; // prevent coyote-time double jump
                 }
 
                 // Do NOT apply gravity when grounded — collision handles it
@@ -195,8 +200,18 @@ namespace MunCraft.Player
                 pos = newPos;
             }
 
-            _wasGrounded = _isGrounded;
-            _isGrounded = grounded;
+            // Coyote time: stay grounded briefly after losing contact
+            if (grounded)
+            {
+                _groundedTimer = CoyoteTime;
+                _isGrounded = true;
+            }
+            else
+            {
+                _groundedTimer -= dt;
+                _isGrounded = _groundedTimer > 0;
+            }
+
             transform.position = pos;
 
             // Apply orientation
@@ -213,7 +228,7 @@ namespace MunCraft.Player
             _velocity = Vector3.zero;
             _currentUp = up;
             _isGrounded = false;
-            _wasGrounded = false;
+            _groundedTimer = 0;
         }
     }
 }

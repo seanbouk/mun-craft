@@ -31,7 +31,7 @@ namespace MunCraft.Player
         public int Iterations = 4;
 
         [Tooltip("How far below feet to probe for ground (in block units)")]
-        public float GroundProbeDistance = 0.15f;
+        public float GroundProbeDistance = 0.7f;
 
         [Header("Debug")]
         public bool ShowDebug;
