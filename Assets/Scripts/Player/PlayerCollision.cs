@@ -30,6 +30,9 @@ namespace MunCraft.Player
         [Tooltip("Number of collision resolution passes per frame")]
         public int Iterations = 4;
 
+        [Tooltip("How far below feet to probe for ground (in block units)")]
+        public float GroundProbeDistance = 0.15f;
+
         [Header("Debug")]
         public bool ShowDebug;
 
@@ -159,6 +162,23 @@ namespace MunCraft.Player
 
             if (result.HitSomething)
                 result.PushDirection.Normalize();
+
+            // Ground probe: check if there's a solid block near the player's feet
+            // This is independent of collision penetration — solves the grounded flicker
+            if (!result.IsGrounded)
+            {
+                Vector3 feetPos = result.Position - up * (Height * 0.5f);
+                for (float d = 0; d <= GroundProbeDistance; d += 0.05f)
+                {
+                    Vector3 probePos = feetPos - up * d;
+                    var probeAddr = Core.BlockAddress.FromWorldPosition(probePos, blockSize);
+                    if (_chunkManager.IsSolid(probeAddr))
+                    {
+                        result.IsGrounded = true;
+                        break;
+                    }
+                }
+            }
 
             // Draw capsule in debug
             if (ShowDebug)
