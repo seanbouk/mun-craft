@@ -40,7 +40,7 @@ namespace MunCraft.Meshing
                     var address = new BlockAddress(parity, gx, gy, gz);
 
                     Vector3 blockWorldPos = address.ToWorldPosition(chunkManager.BlockSize);
-                    Color blockColor = type.GetColor();
+                    Color blockColor = type.GetColor(address);
 
                     address.GetNeighbors(neighbors);
 
