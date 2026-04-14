@@ -1,5 +1,6 @@
 using MunCraft.Core;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace MunCraft.Interaction
 {
@@ -41,8 +42,9 @@ namespace MunCraft.Interaction
 
             UpdateHighlight();
 
-            // Mine on click
-            if (Input.GetMouseButtonDown(0) && _targetBlock.HasValue)
+            // Mine on click (new Input System)
+            var mouse = Mouse.current;
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame && _targetBlock.HasValue)
             {
                 if (Cursor.lockState == CursorLockMode.Locked)
                 {

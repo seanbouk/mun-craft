@@ -109,14 +109,21 @@ namespace MunCraft.Debug
                 GUILayout.Label($"Grounded: {Player.IsGrounded}");
                 GUILayout.Label($"Speed: {Player.Velocity.magnitude:F1}");
 
+                // Input debug — visible on screen so you don't need the Console
+                GUILayout.Space(5);
+                GUILayout.Label("<b>--- Input ---</b>");
+                GUILayout.Label($"H={Player._lastH:F2} V={Player._lastV:F2}");
+                GUILayout.Label($"Mouse: ({Player._lastMouseX:F2}, {Player._lastMouseY:F2})");
+                GUILayout.Label($"AnyKey={Player._lastAnyKey} Focused={Player._lastFocused}");
+
                 // Collision debug
+                GUILayout.Space(5);
+                GUILayout.Label("<b>--- Collision ---</b>");
                 var col = Player.GetComponent<MunCraft.Player.PlayerCollision>();
                 if (col != null)
                 {
-                    GUILayout.Label($"Blocks checked: {col.LastBlocksChecked}");
-                    GUILayout.Label($"Collisions: {col.LastCollisionsFound}");
-                    GUILayout.Label($"Deepest pen: {col.LastDeepestPenetration:F3}");
-                    GUILayout.Label($"Push dir: ({col.LastPushDir.x:F2}, {col.LastPushDir.y:F2}, {col.LastPushDir.z:F2})");
+                    GUILayout.Label($"Checked: {col.LastBlocksChecked} Hits: {col.LastCollisionsFound}");
+                    GUILayout.Label($"Deepest: {col.LastDeepestPenetration:F3}");
                     col.ShowDebug = GUILayout.Toggle(col.ShowDebug, "Show Collision Debug");
                 }
             }

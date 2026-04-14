@@ -195,7 +195,8 @@ namespace MunCraft.Player
             LastDeepestPenetration = deepest;
             LastPushDir = result.HitSomething ? result.PushDirection : Vector3.zero;
 
-            // Console logging — always on until collision is fixed
+            // Console logging — only when ShowDebug is on
+            if (ShowDebug)
             {
                 UnityEngine.Debug.Log(
                     $"[Collision] pos={result.Position:F2} checked={totalChecked} " +

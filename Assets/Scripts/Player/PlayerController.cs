@@ -1,5 +1,6 @@
 using MunCraft.Gravity;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace MunCraft.Player
 {
@@ -35,6 +36,10 @@ namespace MunCraft.Player
         bool _wasGrounded;
         PlayerCollision _collision;
         bool _loggedStartup;
+
+        // Debug state — read by DebugUI
+        [System.NonSerialized] public float _lastH, _lastV, _lastMouseX, _lastMouseY;
+        [System.NonSerialized] public bool _lastAnyKey, _lastFocused;
 
         public Vector3 Velocity => _velocity;
         public Vector3 CurrentUp => _currentUp;
@@ -83,11 +88,31 @@ namespace MunCraft.Player
                 right = Vector3.Cross(_currentUp, Vector3.forward).normalized;
             forward = Vector3.Cross(right, _currentUp).normalized;
 
-            // Apply movement input
-            float h = Input.GetAxisRaw("Horizontal");
-            float v = Input.GetAxisRaw("Vertical");
+            // Apply movement input (using new Input System directly)
+            var kb = Keyboard.current;
+            var mouse = Mouse.current;
+            float h = 0, v = 0, mouseX = 0, mouseY = 0;
+            bool jumpPressed = false;
+            if (kb != null)
+            {
+                if (kb.dKey.isPressed) h += 1f;
+                if (kb.aKey.isPressed) h -= 1f;
+                if (kb.wKey.isPressed) v += 1f;
+                if (kb.sKey.isPressed) v -= 1f;
+                jumpPressed = kb.spaceKey.wasPressedThisFrame;
+            }
+            if (mouse != null)
+            {
+                Vector2 mouseDelta = mouse.delta.ReadValue();
+                mouseX = mouseDelta.x * 0.1f;
+                mouseY = mouseDelta.y * 0.1f;
+            }
             Vector3 moveDir = (right * h + forward * v);
             if (moveDir.sqrMagnitude > 1f) moveDir.Normalize();
+
+            // Expose input state for on-screen debug
+            _lastH = h; _lastV = v; _lastMouseX = mouseX; _lastMouseY = mouseY;
+            _lastAnyKey = kb != null && kb.anyKey.isPressed; _lastFocused = Application.isFocused;
 
             if (_isGrounded)
             {
@@ -110,7 +135,7 @@ namespace MunCraft.Player
                 _velocity -= _currentUp * GroundSnapForce * dt;
 
                 // Jump
-                if (Input.GetButtonDown("Jump"))
+                if (jumpPressed)
                 {
                     _velocity += _currentUp * JumpForce;
                     _isGrounded = false;
