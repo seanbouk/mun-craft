@@ -2,6 +2,7 @@ using MunCraft.Core;
 using MunCraft.Gravity;
 using MunCraft.Player;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 namespace MunCraft.Debug
 {
@@ -22,7 +23,7 @@ namespace MunCraft.Debug
         public int GravityVectorGridSize = 5;
         public float GravityVectorScale = 0.5f;
 
-        bool _showUI = true;
+        bool _showUI = false;
         float _sphereRadius = 12;
         float _fps;
         float _fpsTimer;
@@ -30,7 +31,8 @@ namespace MunCraft.Debug
 
         void Update()
         {
-            if (Input.GetKeyDown(KeyCode.BackQuote))
+            var kb = Keyboard.current;
+            if (kb != null && kb.backquoteKey.wasPressedThisFrame)
                 _showUI = !_showUI;
 
             // FPS counter
