@@ -265,19 +265,57 @@ Defaults sit on `GameBootstrap`, `GravityField`, `PlayerController`, `PlayerColl
 
 Mining times per block are in `BlockType.GetMiningTime()` — Grass 0.4s, Dirt 0.6s, Sand 0.5s, Stone 1.6s, Iron 2.5s, Gold 3.0s, Crystal 4.0s.
 
-## Building for WebGL
+## Building and deploying
 
-1. **File → Build Profiles → WebGL** (should already be active)
-2. Player Settings:
-   - Compression Format: **Gzip** (best browser support)
-   - Memory Size: leave default (Unity 6 manages this automatically)
-   - Enable Exceptions: **Explicitly Thrown** only
-3. Build and Run
+The project ships with editor menu items and a small Python serve script
+to make the build/test/deploy loop a one-liner.
 
-Constraints baked into the design:
+### One-time setup
+
+1. In Unity: **MunCraft → Configure WebGL Settings**. This switches the
+   build target to WebGL and sets compression (Gzip), exception support
+   (explicitly-thrown only), and decompression fallback (so the build
+   still loads if the host doesn't send `Content-Encoding` headers).
+2. On GitHub: **Settings → Pages → Source: Deploy from a branch →
+   Branch: `main`, Folder: `/docs`**. (You only need to do this once;
+   after that, every push to `main` that updates `docs/` redeploys.)
+
+### Build for local testing
+
+In Unity: **MunCraft → Build WebGL**. Output goes to `Build/WebGL/`
+(gitignored).
+
+Then from a terminal in the project root:
+
+```
+python scripts/serve.py
+```
+
+That serves `Build/WebGL/` at <http://localhost:8000> with the right
+`Content-Encoding: gzip` headers. Open the URL and you're playing the
+WebGL build.
+
+### Build and deploy to GitHub Pages
+
+In Unity: **MunCraft → Build for GitHub Pages (docs/)**. This builds
+straight into `docs/` and drops a `.nojekyll` file alongside (Unity
+emits files starting with underscores that Jekyll would otherwise hide).
+
+Then commit and push:
+
+```
+git add docs
+git commit -m "deploy"
+git push
+```
+
+GitHub Pages serves it at `https://<user>.github.io/<repo>/` within a
+minute or two of the push.
+
+### WebGL constraints baked into the design
 
 - No compute shaders → all meshing happens on the CPU
-- ~2GB memory ceiling → chunk data is compact `byte[]`
+- ~2 GB memory ceiling → chunk data is compact `byte[]`
 - One mesh per chunk, one shared material → keeps draw calls in check
 - Unlit shader → minimal fragment cost
 
