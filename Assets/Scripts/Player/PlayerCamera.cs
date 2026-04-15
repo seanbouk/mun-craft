@@ -4,9 +4,8 @@ using UnityEngine.InputSystem;
 namespace MunCraft.Player
 {
     /// <summary>
-    /// First-person camera that aligns with the player's gravity-defined up vector.
-    /// Pitch (look up/down) is clamped. Yaw (look left/right) rotates around the up axis.
-    /// Uses the new Input System for mouse input.
+    /// First-person camera. Mouse X rotates the player's body around the up axis
+    /// (so movement direction follows where you look). Mouse Y is camera-only pitch.
     /// </summary>
     public class PlayerCamera : MonoBehaviour
     {
@@ -20,7 +19,6 @@ namespace MunCraft.Player
 
         PlayerController _controller;
         float _pitch;
-        float _yaw;
         bool _cursorLocked;
 
         void Start()
@@ -36,7 +34,6 @@ namespace MunCraft.Player
             var kb = Keyboard.current;
             var mouse = Mouse.current;
 
-            // Toggle cursor lock
             if (kb != null && kb.escapeKey.wasPressedThisFrame)
             {
                 if (_cursorLocked) UnlockCursor();
@@ -48,34 +45,39 @@ namespace MunCraft.Player
                 LockCursor();
             }
 
-            // Mouse input
+            Vector3 up = _controller.CurrentUp;
+            float mouseX = 0, mouseY = 0;
+
             if (_cursorLocked && mouse != null)
             {
                 Vector2 delta = mouse.delta.ReadValue();
-                _yaw += delta.x * MouseSensitivity;
-                _pitch -= delta.y * MouseSensitivity;
-                _pitch = Mathf.Clamp(_pitch, PitchMin, PitchMax);
+                mouseX = delta.x * MouseSensitivity;
+                mouseY = delta.y * MouseSensitivity;
             }
 
+            // Mouse X rotates the player body around the up axis
+            // This makes WASD movement follow the look direction
+            if (Mathf.Abs(mouseX) > 0.0001f)
+            {
+                _controller.transform.rotation = Quaternion.AngleAxis(mouseX, up) * _controller.transform.rotation;
+            }
+
+            // Mouse Y is camera-only pitch
+            _pitch -= mouseY;
+            _pitch = Mathf.Clamp(_pitch, PitchMin, PitchMax);
+
             // Position camera at eye height
-            Vector3 up = _controller.CurrentUp;
             transform.position = _controller.transform.position + up * EyeHeight;
 
-            // Build camera rotation
-            Vector3 forward = _controller.transform.forward;
-            Vector3 right = Vector3.Cross(up, forward).normalized;
+            // Camera direction = body forward + pitch rotation
+            Vector3 bodyForward = _controller.transform.forward;
+            Vector3 right = Vector3.Cross(up, bodyForward).normalized;
             if (right.sqrMagnitude < 0.001f)
                 right = Vector3.Cross(up, Vector3.forward).normalized;
-            forward = Vector3.Cross(right, up).normalized;
+            bodyForward = Vector3.Cross(right, up).normalized;
 
-            // Apply yaw
-            Quaternion yawRot = Quaternion.AngleAxis(_yaw, up);
-            forward = yawRot * forward;
-            right = yawRot * right;
-
-            // Apply pitch
             Quaternion pitchRot = Quaternion.AngleAxis(_pitch, right);
-            Vector3 lookDir = pitchRot * forward;
+            Vector3 lookDir = pitchRot * bodyForward;
 
             transform.rotation = Quaternion.LookRotation(lookDir, up);
         }
