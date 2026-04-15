@@ -103,6 +103,23 @@ namespace MunCraft.Meshing
         }
 
         /// <summary>
+        /// Set every exposed face of a block to a single color.
+        /// </summary>
+        public void SetBlockColor(BlockAddress addr, Color color)
+        {
+            if (_faceMap == null || _workingColors == null) return;
+            if (!_faceMap.Blocks.TryGetValue(addr, out var faces)) return;
+            for (int f = 0; f < 14; f++)
+            {
+                var range = faces[f];
+                if (range.Count == 0) continue;
+                for (int i = 0; i < range.Count; i++)
+                    _workingColors[range.Start + i] = color;
+            }
+            _colorsDirty = true;
+        }
+
+        /// <summary>
         /// Restore all of a block's faces to their original colors.
         /// </summary>
         public void RestoreBlockColors(BlockAddress addr)

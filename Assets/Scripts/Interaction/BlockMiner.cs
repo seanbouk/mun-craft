@@ -7,10 +7,10 @@ using UnityEngine.InputSystem;
 namespace MunCraft.Interaction
 {
     /// <summary>
-    /// Hold-to-mine. Visual feedback while mining: each exposed face of the
-    /// targeted block independently toggles between white and its original
-    /// colour at a re-roll rate that accelerates as mining progresses.
-    /// Mutates the actual chunk mesh's vertex colors — no overlay geometry.
+    /// Click-to-mine. While mining, the whole brick flashes between white and
+    /// its original colour a fixed number of times spread over the mining
+    /// duration. First flash starts on mouse-down; the brick is white at the
+    /// moment of destruction.
     /// </summary>
     public class BlockMiner : MonoBehaviour
     {
@@ -22,19 +22,9 @@ namespace MunCraft.Interaction
         public Color HighlightColor = new Color(1f, 1f, 1f, 0.25f);
 
         [Header("Mining flash")]
-        [Tooltip("Re-roll period at progress=0 (seconds)")]
-        public float FlashStartPeriod = 0.18f;
-        [Tooltip("Re-roll period at progress=1 (seconds)")]
-        public float FlashEndPeriod = 0.025f;
-        [Tooltip("Probability a face is lit on each re-roll")]
-        [Range(0f, 1f)]
-        public float LitProbability = 0.5f;
-        public Color LitColor = new Color(1f, 1f, 1f, 1f);
-
-        [Header("Jutter (drill shake) — set 0 to disable")]
-        public float JutterAmplitude = 0f;
-        public float JutterStartPeriod = 0.06f;
-        public float JutterEndPeriod = 0.015f;
+        [Tooltip("Number of white flashes spread over the mining duration")]
+        public int FlashCount = 12;
+        public Color FlashColor = Color.white;
 
         ChunkManager _chunkManager;
         Camera _camera;
@@ -44,14 +34,9 @@ namespace MunCraft.Interaction
         ChunkRenderer _miningRenderer;
         float _miningProgress;
         float _miningTime;
-        float _lastFlashTime;
 
         // Highlight overlay (only used when targeting, not mining)
         GameObject _highlightObj;
-
-        // Jutter
-        Vector3 _jutterOffset;
-        float _lastJutterTime;
 
         public BlockAddress? TargetBlock => _targetBlock;
         public float MiningProgress => _miningProgress;
@@ -74,19 +59,15 @@ namespace MunCraft.Interaction
             bool holding = mouse != null && mouse.leftButton.isPressed && cursorReady;
             bool justClicked = mouse != null && mouse.leftButton.wasPressedThisFrame && cursorReady;
 
-            // Stop mining on release or if look drifts to a different block
+            // Stop mining on release or if the look target drifts
             if (_miningBlock.HasValue && (!holding || _targetBlock != _miningBlock))
-            {
                 StopMining();
-            }
 
-            // Only START on a fresh click, not just because the button is held
+            // Only START on a fresh click
             if (justClicked && _targetBlock.HasValue && _miningBlock == null)
-            {
                 StartMining(_targetBlock.Value);
-            }
 
-            // Continue mining (progress accumulates while held)
+            // Continue mining
             if (_miningBlock.HasValue && _miningTime > 0)
             {
                 _miningProgress += Time.deltaTime / _miningTime;
@@ -99,7 +80,7 @@ namespace MunCraft.Interaction
                     return;
                 }
 
-                UpdateFlash();
+                ApplyFlashState();
             }
 
             UpdateHighlight();
@@ -110,7 +91,6 @@ namespace MunCraft.Interaction
             _miningBlock = addr;
             _miningTime = _chunkManager.GetBlock(addr).GetMiningTime();
             _miningProgress = 0f;
-            _lastFlashTime = -999f;
 
             var chunkCoord = addr.GetChunkCoord(Chunk.Size);
             _miningRenderer = ChunkRendererRegistry.Get(chunkCoord);
@@ -119,34 +99,33 @@ namespace MunCraft.Interaction
         void StopMining()
         {
             if (_miningBlock.HasValue && _miningRenderer != null)
-            {
                 _miningRenderer.RestoreBlockColors(_miningBlock.Value);
-            }
             _miningBlock = null;
             _miningRenderer = null;
             _miningProgress = 0f;
             _miningTime = 0f;
         }
 
-        void UpdateFlash()
+        /// <summary>
+        /// Whole-brick flash. Divides the mining duration into FlashCount equal
+        /// segments. In each segment the brick is white for the first half and
+        /// original for the second half — except the final segment, which stays
+        /// white throughout so the brick is white at the moment of destruction.
+        /// </summary>
+        void ApplyFlashState()
         {
-            if (_miningRenderer == null || !_miningBlock.HasValue) return;
-            if (!_miningRenderer.FaceMap.Blocks.TryGetValue(_miningBlock.Value, out var faces))
-                return;
+            if (_miningRenderer == null || !_miningBlock.HasValue || FlashCount < 1) return;
 
-            float period = Mathf.Lerp(FlashStartPeriod, FlashEndPeriod, _miningProgress);
-            if (Time.time - _lastFlashTime < period) return;
-            _lastFlashTime = Time.time;
+            float fracIntoMine = _miningProgress * FlashCount;
+            int segment = Mathf.Clamp(Mathf.FloorToInt(fracIntoMine), 0, FlashCount - 1);
+            float withinSegment = fracIntoMine - segment;
 
-            // Random per-face: lit (white) or unlit (restore original)
-            for (int f = 0; f < 14; f++)
-            {
-                if (faces[f].Count == 0) continue; // face not in mesh
-                if (Random.value < LitProbability)
-                    _miningRenderer.SetFaceColor(_miningBlock.Value, f, LitColor);
-                else
-                    _miningRenderer.RestoreFaceColor(_miningBlock.Value, f);
-            }
+            bool white = segment >= FlashCount - 1 || withinSegment < 0.5f;
+
+            if (white)
+                _miningRenderer.SetBlockColor(_miningBlock.Value, FlashColor);
+            else
+                _miningRenderer.RestoreBlockColors(_miningBlock.Value);
         }
 
         BlockAddress? RaycastBlocks()
@@ -180,10 +159,9 @@ namespace MunCraft.Interaction
 
         void UpdateHighlight()
         {
-            // Show the wire-ish highlight when targeting but NOT actively mining
-            // (during mining, the face colors do the talking)
+            // Only show the white outline when targeting but not actively mining.
+            // While mining, the brick's own face colors do the talking.
             bool show = _targetBlock.HasValue && !_miningBlock.HasValue;
-
             if (!show)
             {
                 _highlightObj.SetActive(false);
@@ -191,21 +169,7 @@ namespace MunCraft.Interaction
             }
 
             Vector3 worldPos = _targetBlock.Value.ToWorldPosition(_chunkManager.BlockSize);
-
-            // Jutter (off by default)
-            Vector3 offset = Vector3.zero;
-            if (JutterAmplitude > 0 && _miningBlock.HasValue)
-            {
-                float period = Mathf.Lerp(JutterStartPeriod, JutterEndPeriod, _miningProgress);
-                if (Time.time - _lastJutterTime >= period)
-                {
-                    _jutterOffset = Random.insideUnitSphere * JutterAmplitude;
-                    _lastJutterTime = Time.time;
-                }
-                offset = _jutterOffset;
-            }
-
-            _highlightObj.transform.position = worldPos + offset;
+            _highlightObj.transform.position = worldPos;
             _highlightObj.SetActive(true);
         }
 
