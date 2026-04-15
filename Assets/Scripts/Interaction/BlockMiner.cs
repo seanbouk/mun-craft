@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using MunCraft.Core;
+using MunCraft.InventorySystem;
 using MunCraft.Meshing;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -28,6 +29,7 @@ namespace MunCraft.Interaction
 
         ChunkManager _chunkManager;
         Camera _camera;
+        Inventory _inventory;
 
         BlockAddress? _targetBlock;
         BlockAddress? _miningBlock;
@@ -41,10 +43,11 @@ namespace MunCraft.Interaction
         public BlockAddress? TargetBlock => _targetBlock;
         public float MiningProgress => _miningProgress;
 
-        public void Initialize(ChunkManager chunkManager, Camera camera)
+        public void Initialize(ChunkManager chunkManager, Camera camera, Inventory inventory = null)
         {
             _chunkManager = chunkManager;
             _camera = camera;
+            _inventory = inventory;
             CreateHighlight();
         }
 
@@ -75,8 +78,10 @@ namespace MunCraft.Interaction
                 if (_miningProgress >= 1f)
                 {
                     var b = _miningBlock.Value;
+                    var minedType = _chunkManager.GetBlock(b);
                     StopMining(); // restore colors first
                     _chunkManager.SetBlock(b, BlockType.Air); // then destroy
+                    _inventory?.Add(minedType);
                     return;
                 }
 

@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using MunCraft.Core;
 using MunCraft.Gravity;
 using MunCraft.Interaction;
+using MunCraft.InventorySystem;
 using MunCraft.Meshing;
 using MunCraft.Player;
 using UnityEngine;
@@ -31,6 +32,7 @@ namespace MunCraft.Debug
 
         ChunkManager _chunkManager;
         GravityField _gravityField;
+        Inventory _inventory;
         GameObject _playerObj;
         GameObject _chunksRoot;
         Material _blockMaterial;
@@ -76,6 +78,12 @@ namespace MunCraft.Debug
 
             // Listen for block changes to handle remeshing of neighbor chunks
             _chunkManager.OnBlockChanged += OnBlockChanged;
+
+            // Inventory + its on-screen bar
+            var inventoryObj = new GameObject("Inventory");
+            _inventory = inventoryObj.AddComponent<Inventory>();
+            var inventoryUI = inventoryObj.AddComponent<InventoryUI>();
+            inventoryUI.Inventory = _inventory;
 
             // Spawn player
             SpawnPlayer();
@@ -143,7 +151,7 @@ namespace MunCraft.Debug
 
             // Block miner
             var miner = _playerObj.AddComponent<BlockMiner>();
-            miner.Initialize(_chunkManager, cam);
+            miner.Initialize(_chunkManager, cam, _inventory);
 
             // Teleport with correct orientation
             controller.Teleport(spawnPos, Vector3.up);

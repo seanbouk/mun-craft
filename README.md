@@ -8,7 +8,7 @@ You stand on the surface of a little world built out of chunky 14-sided blocks. 
 
 That means the shape of the world *is* the gravity field. Dig a tunnel right through the middle and at some point your sense of which way is up will flip. Mine away enough mass on one side of the planet and the rest will start to feel oddly tilted. The whole game is built around that one idea — that you can change a planet's gravity by changing its shape.
 
-It's single player, browser-based (WebGL), and the look is deliberately stripped back: flat colours, no shadows, no textures. The mining is hold-to-break, with each block type taking longer than the one above it as you dig deeper.
+It's single player, browser-based (WebGL), and the look is deliberately stripped back: flat colours, no shadows, no textures. The mining is hold-to-break, with each block type taking longer than the one above it as you dig deeper. A row of slots at the top of the screen tracks what you've collected — each slot stays empty until you mine your first one of that type, then fills with the block's colour and a running count.
 
 ### Controls
 
@@ -66,9 +66,13 @@ The scene contains a single `GameBootstrap` GameObject. Everything else (chunks,
             ^
             | (registered in)
             |
-       ChunkRendererRegistry  <----  BlockMiner
-       coord -> renderer             (mutates target
-                                      block's faces)
+       ChunkRendererRegistry  <----  BlockMiner ----> Inventory
+       coord -> renderer             (mutates target  per-type counts
+                                      block's faces)  + OnChanged event
+                                                            |
+                                                            v
+                                                       InventoryUI
+                                                       (IMGUI top bar)
 
                            Player
             PlayerController  -- queries gravity, integrates motion
@@ -108,6 +112,10 @@ Assets/
 │   │
 │   ├── Interaction/
 │   │   └── BlockMiner.cs         # Hold-to-mine with whole-brick flash feedback
+│   │
+│   ├── Inventory/
+│   │   ├── Inventory.cs          # Per-block-type counts + OnChanged event
+│   │   └── InventoryUI.cs        # IMGUI bar across the top of the screen
 │   │
 │   └── Debug/
 │       ├── SphereGenerator.cs    # Builds the initial planet
@@ -228,6 +236,23 @@ After the resolution loop, a separate **ground probe** steps a short distance al
 
 While mining, the **whole brick flashes**. The duration is divided into `FlashCount` (12) equal segments. Each segment is white for the first half, original for the second half — except the last segment which stays white throughout, so the brick is white at the moment of destruction. Slow blocks pulse slowly, fast blocks pulse rapidly; the rhythm is automatically tied to the block's hardness.
 
+When a block is destroyed, its type is captured *before* `SetBlock(addr, Air)` and added to `Inventory`, so the inventory always credits the correct type even though the block is gone by the time the event fires.
+
+### Inventory
+
+`Inventory` is a `Dictionary<BlockType, int>` of counts plus an `OnChanged` event. `BlockMiner.Add(type)` is the only writer right now.
+
+`InventoryUI` is an IMGUI bar pinned to the top of the screen:
+
+- One slot per non-Air block type, in enum order
+- Empty slots: dark grey fill
+- Owned slots: filled with the block's base colour (`BlockType.GetColor()`)
+- Each slot has the type name underneath in light text
+- Owned slots show a bold count in the bottom-right corner
+- Both labels and counts have a 1-pixel dark drop shadow so they stay legible against either dark empty backgrounds or bright block colours
+
+The discovery effect ("you don't see what gold looks like until you've mined some") is just `Inventory.GetCount(type) > 0`.
+
 ### Debug overlay
 
 `DebugUI` is an IMGUI panel (toggle: backtick). It shows:
@@ -331,12 +356,14 @@ Done so far:
 - [x] Capsule-vs-block collision with stable grounding
 - [x] Click-to-start hold-to-mine with per-block timing and flash feedback
 - [x] Procedural sphere generator with depth-based block layers
+- [x] Discovery-based inventory bar with per-type counts
 - [x] Debug overlay for live tuning
+- [x] WebGL build pipeline + GitHub Pages deploy
 
 Possible next steps:
 
 - Block placement (right-click)
-- Inventory / hotbar
+- Hotbar / selection (currently the inventory is read-only display)
 - Larger worlds with chunk streaming and LOD
 - More interesting terrain (caves, ore veins, biomes, structures)
 - Save/load
