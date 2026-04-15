@@ -70,36 +70,36 @@ namespace MunCraft.Interaction
             _targetBlock = RaycastBlocks();
 
             var mouse = Mouse.current;
-            bool holding = mouse != null
-                           && mouse.leftButton.isPressed
-                           && Cursor.lockState == CursorLockMode.Locked;
+            bool cursorReady = Cursor.lockState == CursorLockMode.Locked;
+            bool holding = mouse != null && mouse.leftButton.isPressed && cursorReady;
+            bool justClicked = mouse != null && mouse.leftButton.wasPressedThisFrame && cursorReady;
 
-            // Reset on release or target change
-            if (!holding || _targetBlock != _miningBlock)
+            // Stop mining on release or if look drifts to a different block
+            if (_miningBlock.HasValue && (!holding || _targetBlock != _miningBlock))
             {
                 StopMining();
             }
 
-            // Start / continue mining
-            if (holding && _targetBlock.HasValue)
+            // Only START on a fresh click, not just because the button is held
+            if (justClicked && _targetBlock.HasValue && _miningBlock == null)
             {
-                if (_miningBlock == null)
-                    StartMining(_targetBlock.Value);
+                StartMining(_targetBlock.Value);
+            }
 
-                if (_miningTime > 0)
+            // Continue mining (progress accumulates while held)
+            if (_miningBlock.HasValue && _miningTime > 0)
+            {
+                _miningProgress += Time.deltaTime / _miningTime;
+
+                if (_miningProgress >= 1f)
                 {
-                    _miningProgress += Time.deltaTime / _miningTime;
-
-                    if (_miningProgress >= 1f)
-                    {
-                        var b = _miningBlock.Value;
-                        StopMining(); // restore colors first
-                        _chunkManager.SetBlock(b, BlockType.Air); // then destroy
-                        return;
-                    }
-
-                    UpdateFlash();
+                    var b = _miningBlock.Value;
+                    StopMining(); // restore colors first
+                    _chunkManager.SetBlock(b, BlockType.Air); // then destroy
+                    return;
                 }
+
+                UpdateFlash();
             }
 
             UpdateHighlight();
