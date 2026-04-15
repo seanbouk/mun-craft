@@ -7,23 +7,22 @@ namespace MunCraft.Meshing
 {
     /// <summary>
     /// Generates a single Mesh for a chunk by emitting only exposed faces
-    /// of truncated octahedron blocks.
+    /// of truncated octahedron blocks. Also produces a face map so callers
+    /// can find/edit specific block faces in the resulting mesh.
     /// </summary>
     public static class ChunkMesher
     {
-        /// <summary>
-        /// Build a mesh for the given chunk. Only emits faces adjacent to air.
-        /// </summary>
-        public static Mesh BuildMesh(Chunk chunk, ChunkManager chunkManager)
+        public static Mesh BuildMesh(Chunk chunk, ChunkManager chunkManager,
+                                     out ChunkFaceMap faceMap, out Color[] originalColors)
         {
             var vertices = new List<Vector3>();
             var triangles = new List<int>();
             var colors = new List<Color>();
             var normals = new List<Vector3>();
 
+            faceMap = new ChunkFaceMap();
             Span<BlockAddress> neighbors = stackalloc BlockAddress[14];
 
-            // Iterate both grids
             for (int parity = 0; parity <= 1; parity++)
             {
                 for (int lz = 0; lz < Chunk.Size; lz++)
@@ -33,7 +32,6 @@ namespace MunCraft.Meshing
                     BlockType type = chunk.GetBlock((byte)parity, lx, ly, lz);
                     if (type == BlockType.Air) continue;
 
-                    // Reconstruct the global block address
                     int gx = chunk.Coord.x * Chunk.Size + lx;
                     int gy = chunk.Coord.y * Chunk.Size + ly;
                     int gz = chunk.Coord.z * Chunk.Size + lz;
@@ -44,24 +42,28 @@ namespace MunCraft.Meshing
 
                     address.GetNeighbors(neighbors);
 
-                    // Check each of 14 faces
                     for (int faceIdx = 0; faceIdx < 14; faceIdx++)
                     {
                         int neighborIdx = TruncOctGeometry.FaceToNeighborIndex[faceIdx];
                         BlockAddress neighborAddr = neighbors[neighborIdx];
 
-                        // Only emit face if neighbor is air
                         if (chunkManager.GetBlock(neighborAddr).IsSolid())
                             continue;
 
+                        int vertStart = vertices.Count;
                         EmitFace(faceIdx, blockWorldPos, blockColor, chunkManager.BlockSize,
                                  vertices, triangles, colors, normals);
+                        int vertCount = vertices.Count - vertStart;
+                        faceMap.RecordFace(address, faceIdx, vertStart, vertCount);
                     }
                 }
             }
 
             if (vertices.Count == 0)
+            {
+                originalColors = System.Array.Empty<Color>();
                 return null;
+            }
 
             var mesh = new Mesh();
             if (vertices.Count > 65535)
@@ -72,6 +74,7 @@ namespace MunCraft.Meshing
             mesh.SetColors(colors);
             mesh.SetNormals(normals);
 
+            originalColors = colors.ToArray();
             return mesh;
         }
 
@@ -83,7 +86,6 @@ namespace MunCraft.Meshing
 
             int baseVertex = vertices.Count;
 
-            // Add vertices for this face
             for (int i = 0; i < faceVertIndices.Length; i++)
             {
                 Vector3 localVert = TruncOctGeometry.Vertices[faceVertIndices[i]];
@@ -92,7 +94,6 @@ namespace MunCraft.Meshing
                 normals.Add(faceNormal);
             }
 
-            // Triangulate as a fan from vertex 0
             int vertCount = faceVertIndices.Length;
             for (int i = 0; i < vertCount - 2; i++)
             {

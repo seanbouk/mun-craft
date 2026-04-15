@@ -66,5 +66,24 @@ namespace MunCraft.Core
         {
             return type != BlockType.Air;
         }
+
+        /// <summary>
+        /// How long (in seconds) it takes to mine this block type.
+        /// Soft surface blocks are quick; deep / valuable blocks take longer.
+        /// </summary>
+        public static float GetMiningTime(this BlockType type)
+        {
+            switch (type)
+            {
+                case BlockType.Grass:   return 0.4f;
+                case BlockType.Dirt:    return 0.6f;
+                case BlockType.Sand:    return 0.5f;
+                case BlockType.Stone:   return 1.6f;
+                case BlockType.Iron:    return 2.5f;
+                case BlockType.Gold:    return 3.0f;
+                case BlockType.Crystal: return 4.0f;
+                default:                return 0f;
+            }
+        }
     }
 }
