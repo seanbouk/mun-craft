@@ -35,6 +35,9 @@ namespace MunCraft.Debug
         GameObject _chunksRoot;
         Material _blockMaterial;
 
+        // Reused buffer for OnBlockChanged
+        readonly HashSet<Vector3Int> _dirtyChunkScratch = new HashSet<Vector3Int>();
+
         public ChunkManager ChunkManager => _chunkManager;
 
         void Start()
@@ -157,18 +160,21 @@ namespace MunCraft.Debug
 
         void OnBlockChanged(BlockAddress address, BlockType newType)
         {
-            // Mark the chunk and its neighbors as dirty
-            // (because removing a block can expose faces in adjacent chunks)
-            var chunkCoord = address.GetChunkCoord(Chunk.Size);
+            // Only the changed block's chunk and the chunks containing its 14
+            // BCC neighbors need remeshing — typically 1, sometimes up to ~8
+            // for blocks at chunk corners. (Was 27 with the old 3x3x3 sweep.)
+            _dirtyChunkScratch.Clear();
+            _dirtyChunkScratch.Add(address.GetChunkCoord(Chunk.Size));
 
-            for (int dz = -1; dz <= 1; dz++)
-            for (int dy = -1; dy <= 1; dy++)
-            for (int dx = -1; dx <= 1; dx++)
+            System.Span<BlockAddress> neighbors = stackalloc BlockAddress[14];
+            address.GetNeighbors(neighbors);
+            for (int i = 0; i < 14; i++)
+                _dirtyChunkScratch.Add(neighbors[i].GetChunkCoord(Chunk.Size));
+
+            foreach (var coord in _dirtyChunkScratch)
             {
-                var neighborCoord = chunkCoord + new Vector3Int(dx, dy, dz);
-                var chunk = _chunkManager.GetChunk(neighborCoord);
-                if (chunk != null)
-                    chunk.IsDirty = true;
+                var c = _chunkManager.GetChunk(coord);
+                if (c != null) c.IsDirty = true;
             }
         }
 

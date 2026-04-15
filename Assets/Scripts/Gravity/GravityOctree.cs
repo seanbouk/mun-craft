@@ -48,6 +48,11 @@ namespace MunCraft.Gravity
         }
 
         /// <summary>
+        /// Total number of bodies currently in the tree.
+        /// </summary>
+        public int TotalBodies => _root != null ? Mathf.RoundToInt(_root.TotalMass) : 0;
+
+        /// <summary>
         /// Build the octree from a list of block world positions.
         /// Each block has mass 1.
         /// </summary>
@@ -162,6 +167,161 @@ namespace MunCraft.Gravity
 
             node.TotalMass = totalMass;
             node.CenterOfMass = totalMass > 0 ? weightedPos / totalMass : node.Bounds.center;
+        }
+
+        /// <summary>
+        /// Remove a body at the given position. O(log n) average.
+        /// Returns true if a matching body was found and removed.
+        /// Use this for live mining instead of rebuilding the tree.
+        /// </summary>
+        public bool RemoveBody(Vector3 position)
+        {
+            if (_root == null) return false;
+            return RemoveRecursive(_root, position);
+        }
+
+        bool RemoveRecursive(Node node, Vector3 position)
+        {
+            if (node.IsLeaf)
+            {
+                if (node.Bodies == null) return false;
+                for (int i = 0; i < node.Bodies.Count; i++)
+                {
+                    if ((node.Bodies[i] - position).sqrMagnitude < 1e-6f)
+                    {
+                        node.Bodies.RemoveAt(i);
+                        RecomputeNodeMass(node);
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            int octant = OctantFor(node, position);
+            if (RemoveRecursive(node.Children[octant], position))
+            {
+                RecomputeNodeMass(node);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Add a body at the given position. O(log n) average.
+        /// Falls back to a full rebuild if the position is outside the current root bounds.
+        /// </summary>
+        public void AddBody(Vector3 position)
+        {
+            if (_root == null)
+            {
+                _root = new Node
+                {
+                    Bounds = new Bounds(position, Vector3.one * 8f),
+                    Bodies = new List<Vector3> { position }
+                };
+                RecomputeNodeMass(_root);
+                return;
+            }
+
+            if (!ContainsPoint(_root.Bounds, position))
+            {
+                // Out of bounds — rebuild with all bodies plus the new one.
+                var all = new List<Vector3>();
+                CollectBodies(_root, all);
+                all.Add(position);
+                Build(all);
+                return;
+            }
+
+            AddRecursive(_root, position, 0);
+        }
+
+        void AddRecursive(Node node, Vector3 position, int depth)
+        {
+            if (node.IsLeaf)
+            {
+                if (node.Bodies == null) node.Bodies = new List<Vector3>();
+                node.Bodies.Add(position);
+
+                if (node.Bodies.Count > MaxBodiesPerLeaf && depth < MaxDepth)
+                {
+                    Subdivide(node, depth);
+                    // Subdivide can recurse — recompute the entire subtree's mass
+                    ComputeMass(node);
+                }
+                else
+                {
+                    RecomputeNodeMass(node);
+                }
+                return;
+            }
+
+            int octant = OctantFor(node, position);
+            AddRecursive(node.Children[octant], position, depth + 1);
+            RecomputeNodeMass(node);
+        }
+
+        /// <summary>
+        /// Recompute mass and CoM for a single node, assuming any children
+        /// (if internal) are already correct. Cheap; safe to call repeatedly
+        /// as we walk back up after an incremental change.
+        /// </summary>
+        void RecomputeNodeMass(Node node)
+        {
+            if (node.IsLeaf)
+            {
+                if (node.Bodies == null || node.Bodies.Count == 0)
+                {
+                    node.TotalMass = 0;
+                    node.CenterOfMass = node.Bounds.center;
+                    return;
+                }
+                Vector3 com = Vector3.zero;
+                for (int i = 0; i < node.Bodies.Count; i++)
+                    com += node.Bodies[i];
+                com /= node.Bodies.Count;
+                node.CenterOfMass = com;
+                node.TotalMass = node.Bodies.Count;
+                return;
+            }
+
+            float totalMass = 0;
+            Vector3 weightedPos = Vector3.zero;
+            for (int i = 0; i < 8; i++)
+            {
+                float m = node.Children[i].TotalMass;
+                totalMass += m;
+                weightedPos += node.Children[i].CenterOfMass * m;
+            }
+            node.TotalMass = totalMass;
+            node.CenterOfMass = totalMass > 0 ? weightedPos / totalMass : node.Bounds.center;
+        }
+
+        static int OctantFor(Node node, Vector3 position)
+        {
+            Vector3 c = node.Bounds.center;
+            int octant = 0;
+            if (position.x >= c.x) octant |= 1;
+            if (position.y >= c.y) octant |= 2;
+            if (position.z >= c.z) octant |= 4;
+            return octant;
+        }
+
+        static bool ContainsPoint(Bounds b, Vector3 p)
+        {
+            return p.x >= b.min.x && p.x <= b.max.x
+                && p.y >= b.min.y && p.y <= b.max.y
+                && p.z >= b.min.z && p.z <= b.max.z;
+        }
+
+        void CollectBodies(Node node, List<Vector3> result)
+        {
+            if (node.IsLeaf)
+            {
+                if (node.Bodies != null) result.AddRange(node.Bodies);
+                return;
+            }
+            for (int i = 0; i < 8; i++) CollectBodies(node.Children[i], result);
         }
 
         /// <summary>

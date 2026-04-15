@@ -6,7 +6,8 @@ namespace MunCraft.Gravity
 {
     /// <summary>
     /// Singleton that owns the Barnes-Hut octree and provides gravity queries.
-    /// Listens to ChunkManager.OnBlockChanged for incremental updates.
+    /// Listens to ChunkManager.OnBlockChanged for incremental updates —
+    /// each mine is an O(log n) tree update, no full rebuild.
     /// </summary>
     public class GravityField : MonoBehaviour
     {
@@ -25,8 +26,6 @@ namespace MunCraft.Gravity
 
         ChunkManager _chunkManager;
         GravityOctree _octree;
-        List<Vector3> _blockPositions;
-        bool _needsRebuild;
 
         public static GravityField Instance { get; private set; }
 
@@ -34,7 +33,6 @@ namespace MunCraft.Gravity
         {
             Instance = this;
             _octree = new GravityOctree(Theta, GravityConstant, Softening);
-            _blockPositions = new List<Vector3>();
         }
 
         void OnDestroy()
@@ -51,63 +49,36 @@ namespace MunCraft.Gravity
             _chunkManager = chunkManager;
             _chunkManager.OnBlockChanged += OnBlockChanged;
 
-            // Build positions list from initial blocks
-            _blockPositions.Clear();
-            _blockPositions.Capacity = initialBlocks.Count;
+            // Initial bulk build — O(n log n), only happens once at scene load
+            var positions = new List<Vector3>(initialBlocks.Count);
             for (int i = 0; i < initialBlocks.Count; i++)
-                _blockPositions.Add(initialBlocks[i].ToWorldPosition(_chunkManager.BlockSize));
+                positions.Add(initialBlocks[i].ToWorldPosition(_chunkManager.BlockSize));
 
-            RebuildOctree();
+            _octree.Build(positions);
         }
 
         void OnBlockChanged(BlockAddress address, BlockType newType)
         {
             Vector3 worldPos = address.ToWorldPosition(_chunkManager.BlockSize);
-
             if (newType == BlockType.Air)
-            {
-                // Block removed — remove from positions list
-                _blockPositions.Remove(worldPos);
-            }
+                _octree.RemoveBody(worldPos);
             else
-            {
-                // Block added — add to positions list
-                _blockPositions.Add(worldPos);
-            }
-
-            _needsRebuild = true;
+                _octree.AddBody(worldPos);
         }
 
         void LateUpdate()
         {
-            // Sync parameters
+            // Sync parameters (cheap)
             _octree.Theta = Theta;
             _octree.GravityConstant = GravityConstant;
-
-            if (_needsRebuild)
-            {
-                RebuildOctree();
-                _needsRebuild = false;
-            }
         }
 
-        void RebuildOctree()
-        {
-            _octree.Build(_blockPositions);
-        }
-
-        /// <summary>
-        /// Get the gravity acceleration vector at a world position.
-        /// Points toward the center of mass (this is the "down" direction).
-        /// </summary>
         public Vector3 GetGravityAt(Vector3 position)
         {
             if (_octree == null)
                 return Vector3.down * GravityConstant;
 
             Vector3 gravity = _octree.QueryGravity(position);
-
-            // Clamp magnitude
             float mag = gravity.magnitude;
             if (mag > MaxGravity)
                 gravity = gravity / mag * MaxGravity;
@@ -115,15 +86,12 @@ namespace MunCraft.Gravity
             return gravity;
         }
 
-        /// <summary>
-        /// Get the "up" direction at a world position (opposite of gravity).
-        /// </summary>
         public Vector3 GetUpAt(Vector3 position)
         {
             Vector3 gravity = GetGravityAt(position);
             return gravity.sqrMagnitude > 0.001f ? -gravity.normalized : Vector3.up;
         }
 
-        public int BlockCount => _blockPositions.Count;
+        public int BlockCount => _octree != null ? _octree.TotalBodies : 0;
     }
 }
