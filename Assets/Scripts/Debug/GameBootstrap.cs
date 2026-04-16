@@ -5,6 +5,7 @@ using MunCraft.Interaction;
 using MunCraft.InventorySystem;
 using MunCraft.Meshing;
 using MunCraft.Player;
+using MunCraft.UI;
 using UnityEngine;
 
 namespace MunCraft.Debug
@@ -90,6 +91,10 @@ namespace MunCraft.Debug
 
             // Set up debug UI
             SetupDebugUI();
+
+            // Side menus (Q / E)
+            var menuObj = new GameObject("SideMenus");
+            menuObj.AddComponent<SideMenuManager>();
         }
 
         void CreateChunkRenderers()

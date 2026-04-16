@@ -1,3 +1,4 @@
+using MunCraft.Core;
 using MunCraft.Gravity;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -58,7 +59,7 @@ namespace MunCraft.Player
         void Update()
         {
             float dt = Time.deltaTime;
-            if (dt <= 0) return;
+            if (dt <= 0 || GameState.MenuOpen) return;
 
             // Lazy-find collision component (avoids Awake ordering issues)
             if (_collision == null)

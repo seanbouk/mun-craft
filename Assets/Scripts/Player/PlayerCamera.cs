@@ -1,3 +1,4 @@
+using MunCraft.Core;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -29,7 +30,7 @@ namespace MunCraft.Player
 
         void LateUpdate()
         {
-            if (_controller == null) return;
+            if (_controller == null || GameState.MenuOpen) return;
 
             var kb = Keyboard.current;
             var mouse = Mouse.current;

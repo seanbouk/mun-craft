@@ -53,7 +53,7 @@ namespace MunCraft.Interaction
 
         void Update()
         {
-            if (_chunkManager == null || _camera == null) return;
+            if (_chunkManager == null || _camera == null || GameState.MenuOpen) return;
 
             _targetBlock = RaycastBlocks();
 
