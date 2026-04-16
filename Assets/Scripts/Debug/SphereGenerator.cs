@@ -5,78 +5,287 @@ using UnityEngine;
 namespace MunCraft.Debug
 {
     /// <summary>
-    /// Generates a solid sphere of blocks on the BCC lattice.
-    /// Fills all lattice positions within the given radius from the center.
+    /// Generates a roughly spherical planet with terrain features:
+    ///   - Hills, valleys, and cliffs via multi-octave 3D noise
+    ///   - Worm-like caves with occasional surface entrances
+    ///   - Biome regions (grass, dirt, sand, exposed stone) on the surface
+    ///   - Thin grass only on top-facing surfaces
+    ///   - Geological layers with ore veins at depth
     /// </summary>
     public static class SphereGenerator
     {
-        /// <summary>
-        /// Generate a sphere of blocks centered at the lattice origin.
-        /// Returns the list of addresses that were filled (useful for gravity tree building).
-        /// </summary>
+        [System.Serializable]
+        public struct Settings
+        {
+            // Terrain shape
+            public float HillAmplitude;   // fraction of radius for large features
+            public float CliffAmplitude;  // fraction of radius for medium/cliff features
+            public float DetailAmplitude; // fraction of radius for small surface detail
+
+            // Caves
+            public float CaveFrequency;
+            public float CaveWidth;       // threshold — smaller = thinner caves
+            public float CaveMinDepth;    // blocks from surface before caves appear freely
+            public float CaveCoreRadius;  // fraction of radius below which no caves
+
+            public static Settings Default => new Settings
+            {
+                HillAmplitude = 0.18f,
+                CliffAmplitude = 0.09f,
+                DetailAmplitude = 0.03f,
+                CaveFrequency = 0.14f,
+                CaveWidth = 0.14f,
+                CaveMinDepth = 3f,
+                CaveCoreRadius = 0.2f,
+            };
+        }
+
         public static List<BlockAddress> Generate(ChunkManager chunkManager, int radius, float blockSize)
+        {
+            return Generate(chunkManager, radius, blockSize, Settings.Default);
+        }
+
+        public static List<BlockAddress> Generate(ChunkManager chunkManager, int radius,
+                                                   float blockSize, Settings s)
         {
             var filled = new List<BlockAddress>();
             float radiusWorld = radius * blockSize;
-            float radiusSqr = radiusWorld * radiusWorld;
-            Vector3 center = Vector3.zero;
 
-            // Scan both grids within a bounding box
-            int scanRange = radius + 1;
+            // Scan range must cover the maximum terrain displacement
+            float maxDisplacement = (s.HillAmplitude + s.CliffAmplitude + s.DetailAmplitude) * radiusWorld;
+            int scanRange = Mathf.CeilToInt((radiusWorld + maxDisplacement) / blockSize) + 2;
 
             for (int parity = 0; parity <= 1; parity++)
+            for (int z = -scanRange; z <= scanRange; z++)
+            for (int y = -scanRange; y <= scanRange; y++)
+            for (int x = -scanRange; x <= scanRange; x++)
             {
-                for (int z = -scanRange; z <= scanRange; z++)
-                for (int y = -scanRange; y <= scanRange; y++)
-                for (int x = -scanRange; x <= scanRange; x++)
-                {
-                    var address = new BlockAddress(parity, x, y, z);
-                    Vector3 worldPos = address.ToWorldPosition(blockSize);
+                var address = new BlockAddress(parity, x, y, z);
+                Vector3 worldPos = address.ToWorldPosition(blockSize);
+                float dist = worldPos.magnitude;
 
-                    if ((worldPos - center).sqrMagnitude <= radiusSqr)
-                    {
-                        BlockType type = PickBlockType(worldPos, radiusWorld);
-                        chunkManager.SetBlockSilent(address, type);
-                        filled.Add(address);
-                    }
-                }
+                // Quick reject: way outside possible terrain
+                if (dist > radiusWorld + maxDisplacement + blockSize) continue;
+
+                Vector3 dir = dist > 0.01f ? worldPos / dist : Vector3.up;
+
+                // Surface height at this direction
+                float surfaceHeight = radiusWorld + TerrainHeight(dir, radiusWorld, s);
+
+                // Above terrain → air
+                if (dist > surfaceHeight) continue;
+
+                float depth = surfaceHeight - dist; // 0 at surface, large toward center
+
+                // Cave carving
+                if (IsCave(worldPos, depth, radiusWorld, s)) continue;
+
+                // Determine block type
+                bool isTopFacing = IsTopFacing(worldPos, dir, dist, radiusWorld, blockSize, s);
+                float biome = BiomeNoise(dir);
+                BlockType type = PickBlockType(worldPos, depth, isTopFacing, biome, radiusWorld);
+
+                chunkManager.SetBlockSilent(address, type);
+                filled.Add(address);
             }
 
             chunkManager.MarkAllDirty();
             return filled;
         }
 
-        /// <summary>
-        /// Pick a block type based on depth from surface (like geological layers).
-        /// </summary>
-        static BlockType PickBlockType(Vector3 worldPos, float radius)
+        // ---------------------------------------------------------------
+        //  Terrain height
+        // ---------------------------------------------------------------
+
+        static float TerrainHeight(Vector3 dir, float radius, Settings s)
         {
-            float distFromCenter = worldPos.magnitude;
-            float depth = radius - distFromCenter; // 0 at surface, radius at center
-            float normalizedDepth = depth / radius;
+            float x = dir.x, y = dir.y, z = dir.z;
 
-            // Surface: grass
-            if (normalizedDepth < 0.05f)
-                return BlockType.Grass;
+            // Large rolling hills/valleys
+            float large = FBM(x * 2f, y * 2f, z * 2f, 4, 2.0f, 0.5f) * 2f - 1f;
 
-            // Shallow: dirt
-            if (normalizedDepth < 0.15f)
+            // Medium features — cliffs and ridges
+            // Abs + sqrt sharpens the noise into ridge-like features
+            float med = FBM(x * 5f, y * 5f, z * 5f, 3, 2.0f, 0.5f) * 2f - 1f;
+            float ridge = Mathf.Sqrt(Mathf.Abs(med)) * Mathf.Sign(med);
+
+            // Small surface detail
+            float small = FBM(x * 12f, y * 12f, z * 12f, 2, 2.0f, 0.5f) * 2f - 1f;
+
+            return large * s.HillAmplitude * radius
+                 + ridge * s.CliffAmplitude * radius
+                 + small * s.DetailAmplitude * radius;
+        }
+
+        // ---------------------------------------------------------------
+        //  Caves (worm-style: intersection of two noise channels)
+        // ---------------------------------------------------------------
+
+        static bool IsCave(Vector3 worldPos, float depth, float radius, Settings s)
+        {
+            // No caves in the very center (keep a solid core)
+            float dist = worldPos.magnitude;
+            if (dist < radius * s.CaveCoreRadius) return false;
+
+            float freq = s.CaveFrequency;
+            float n1 = FBM(worldPos.x * freq + 100f, worldPos.y * freq,
+                           worldPos.z * freq, 2, 2f, 0.5f) * 2f - 1f;
+            float n2 = FBM(worldPos.x * freq, worldPos.y * freq + 100f,
+                           worldPos.z * freq + 100f, 2, 2f, 0.5f) * 2f - 1f;
+
+            float width = s.CaveWidth;
+
+            // Near the surface: narrow the threshold so cave openings are rare
+            if (depth < s.CaveMinDepth)
+            {
+                float t = depth / s.CaveMinDepth; // 0 at surface, 1 at minDepth
+                width *= Mathf.Lerp(0.25f, 1f, t);
+            }
+
+            return Mathf.Abs(n1) < width && Mathf.Abs(n2) < width;
+        }
+
+        // ---------------------------------------------------------------
+        //  "Top-facing" check — is the block above (radially) air?
+        // ---------------------------------------------------------------
+
+        static bool IsTopFacing(Vector3 worldPos, Vector3 dir, float dist,
+                                 float radius, float blockSize, Settings s)
+        {
+            // Check if a position one block further from center would be above terrain
+            float aboveDist = dist + blockSize;
+            Vector3 aboveDir = (worldPos + dir * blockSize).normalized;
+            float aboveSurface = radius + TerrainHeight(aboveDir, radius, s);
+            return aboveDist > aboveSurface;
+        }
+
+        // ---------------------------------------------------------------
+        //  Biome noise (low-frequency, sampled on the sphere surface)
+        // ---------------------------------------------------------------
+
+        static float BiomeNoise(Vector3 dir)
+        {
+            return FBM(dir.x * 1.8f + 50f, dir.y * 1.8f + 50f, dir.z * 1.8f + 50f,
+                       2, 2f, 0.5f);
+        }
+
+        // ---------------------------------------------------------------
+        //  Block type assignment
+        // ---------------------------------------------------------------
+
+        static BlockType PickBlockType(Vector3 worldPos, float depth,
+                                        bool isTopFacing, float biome, float radius)
+        {
+            // --- Surface (top-facing, very thin) ---
+            if (isTopFacing && depth < 1.5f)
+            {
+                if (biome < 0.30f) return BlockType.Sand;
+                if (biome > 0.55f) return BlockType.Grass;
                 return BlockType.Dirt;
+            }
 
-            // Some sand pockets (using noise-like pattern from position)
-            float noise = Mathf.Abs(Mathf.Sin(worldPos.x * 3.7f + worldPos.y * 5.3f + worldPos.z * 7.1f));
-            if (normalizedDepth < 0.25f && noise > 0.8f)
-                return BlockType.Sand;
+            // --- Near surface (cliff face / just below grass) ---
+            if (depth < 4f)
+            {
+                if (biome < 0.25f) return BlockType.Sand;
+                if (depth < 2f) return BlockType.Dirt;
+                // Mix of dirt and stone on cliff faces
+                float n = QuickHash(worldPos);
+                return n > 0.5f ? BlockType.Stone : BlockType.Dirt;
+            }
 
-            // Deep: mostly stone with ore veins
-            if (noise > 0.95f)
-                return BlockType.Gold;
-            if (noise > 0.85f)
-                return BlockType.Iron;
-            if (noise > 0.75f && normalizedDepth > 0.5f)
-                return BlockType.Crystal;
+            // --- Mid depth (mostly stone, occasional dirt) ---
+            if (depth < 10f)
+            {
+                float n = QuickHash(worldPos);
+                if (n > 0.93f) return BlockType.Iron;
+                if (n > 0.85f) return BlockType.Dirt;
+                return BlockType.Stone;
+            }
 
-            return BlockType.Stone;
+            // --- Deep (stone + ore veins) ---
+            {
+                float n = QuickHash(worldPos * 3f);
+                if (n > 0.97f) return BlockType.Gold;
+                if (n > 0.93f) return BlockType.Iron;
+                if (n > 0.88f && depth > 15f) return BlockType.Crystal;
+                return BlockType.Stone;
+            }
+        }
+
+        // ---------------------------------------------------------------
+        //  Noise utilities
+        // ---------------------------------------------------------------
+
+        /// <summary>
+        /// Smooth 3D value noise (trilinear interpolation of hashed grid values).
+        /// </summary>
+        static float ValueNoise3D(float x, float y, float z)
+        {
+            int ix = Mathf.FloorToInt(x);
+            int iy = Mathf.FloorToInt(y);
+            int iz = Mathf.FloorToInt(z);
+            float fx = x - ix; float fy = y - iy; float fz = z - iz;
+
+            // Smooth hermite interpolation
+            fx = fx * fx * (3f - 2f * fx);
+            fy = fy * fy * (3f - 2f * fy);
+            fz = fz * fz * (3f - 2f * fz);
+
+            float c000 = HashGrid(ix, iy, iz);
+            float c100 = HashGrid(ix + 1, iy, iz);
+            float c010 = HashGrid(ix, iy + 1, iz);
+            float c110 = HashGrid(ix + 1, iy + 1, iz);
+            float c001 = HashGrid(ix, iy, iz + 1);
+            float c101 = HashGrid(ix + 1, iy, iz + 1);
+            float c011 = HashGrid(ix, iy + 1, iz + 1);
+            float c111 = HashGrid(ix + 1, iy + 1, iz + 1);
+
+            float x00 = Mathf.Lerp(c000, c100, fx);
+            float x10 = Mathf.Lerp(c010, c110, fx);
+            float x01 = Mathf.Lerp(c001, c101, fx);
+            float x11 = Mathf.Lerp(c011, c111, fx);
+            float xy0 = Mathf.Lerp(x00, x10, fy);
+            float xy1 = Mathf.Lerp(x01, x11, fy);
+            return Mathf.Lerp(xy0, xy1, fz);
+        }
+
+        /// <summary>
+        /// Fractal Brownian Motion — stacked octaves of value noise.
+        /// Returns 0..1.
+        /// </summary>
+        static float FBM(float x, float y, float z, int octaves, float lacunarity, float persistence)
+        {
+            float value = 0f, amplitude = 1f, maxAmp = 0f;
+            for (int i = 0; i < octaves; i++)
+            {
+                value += amplitude * ValueNoise3D(x, y, z);
+                maxAmp += amplitude;
+                amplitude *= persistence;
+                x *= lacunarity; y *= lacunarity; z *= lacunarity;
+            }
+            return value / maxAmp;
+        }
+
+        /// <summary>
+        /// Integer hash → float in [0, 1). Used for grid-point values.
+        /// </summary>
+        static float HashGrid(int x, int y, int z)
+        {
+            int h = x * 374761393 + y * 668265263 + z;
+            h = (h ^ (h >> 13)) * 1274126177;
+            h = h ^ (h >> 16);
+            return (h & 0x7fffffff) / (float)0x7fffffff;
+        }
+
+        /// <summary>
+        /// Quick per-position hash for ore/type variation. Returns 0..1.
+        /// </summary>
+        static float QuickHash(Vector3 pos)
+        {
+            return Mathf.Abs(Mathf.Sin(
+                pos.x * 12.9898f + pos.y * 78.233f + pos.z * 37.719f
+            ) * 43758.5453f) % 1f;
         }
     }
 }
