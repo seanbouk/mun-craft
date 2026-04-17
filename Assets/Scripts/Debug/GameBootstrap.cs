@@ -31,9 +31,13 @@ namespace MunCraft.Debug
         public float MoveSpeed = 5f;
         public float JumpForce = 5f;
 
+        [Header("Streaming")]
+        public float RenderDistance = 30f;
+
         ChunkManager _chunkManager;
         GravityField _gravityField;
         Inventory _inventory;
+        ChunkStreamingManager _streamingManager;
         GameObject _playerObj;
         GameObject _chunksRoot;
         Material _blockMaterial;
@@ -74,9 +78,6 @@ namespace MunCraft.Debug
             // Initialize gravity
             _gravityField.Initialize(_chunkManager, filledBlocks);
 
-            // Create chunk renderers
-            CreateChunkRenderers();
-
             // Listen for block changes to handle remeshing of neighbor chunks
             _chunkManager.OnBlockChanged += OnBlockChanged;
 
@@ -86,8 +87,16 @@ namespace MunCraft.Debug
             var inventoryUI = inventoryObj.AddComponent<InventoryUI>();
             inventoryUI.Inventory = _inventory;
 
-            // Spawn player
+            // Spawn player (before streaming so we have a player transform)
             SpawnPlayer();
+
+            // Chunk streaming — only creates renderers near the player
+            var streamObj = new GameObject("ChunkStreaming");
+            _streamingManager = streamObj.AddComponent<ChunkStreamingManager>();
+            _streamingManager.RenderDistance = RenderDistance;
+            _streamingManager.Initialize(_chunkManager, _playerObj.transform,
+                                         _blockMaterial, _chunksRoot);
+            _streamingManager.ForceLoadNearby();
 
             // Set up debug UI
             SetupDebugUI();
@@ -169,6 +178,7 @@ namespace MunCraft.Debug
             debugUI.Bootstrap = this;
             debugUI.GravityFieldRef = _gravityField;
             debugUI.Player = _playerObj.GetComponent<PlayerController>();
+            debugUI.StreamingManager = _streamingManager;
         }
 
         void OnBlockChanged(BlockAddress address, BlockType newType)
@@ -211,13 +221,19 @@ namespace MunCraft.Debug
             // Regenerate
             var filledBlocks = SphereGenerator.Generate(_chunkManager, SphereRadius, BlockSize);
             _gravityField.Initialize(_chunkManager, filledBlocks);
-            CreateChunkRenderers();
 
-            // Reset player well above the sphere
+            // Reset player, then stream nearby chunks
             float surfaceHeight = SphereRadius * BlockSize + 0.559f * BlockSize;
-            Vector3 spawnPos = Vector3.up * (surfaceHeight + 20f);
+            Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight * 0.5f + 0.5f);
             var controller = _playerObj.GetComponent<PlayerController>();
             controller.Teleport(spawnPos, Vector3.up);
+
+            if (_streamingManager != null)
+            {
+                _streamingManager.Initialize(_chunkManager, _playerObj.transform,
+                                             _blockMaterial, _chunksRoot);
+                _streamingManager.ForceLoadNearby();
+            }
         }
 
         void OnDestroy()

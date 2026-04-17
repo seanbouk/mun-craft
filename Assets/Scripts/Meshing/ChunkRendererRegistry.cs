@@ -22,5 +22,9 @@ namespace MunCraft.Meshing
         }
 
         public static void Clear() => _renderers.Clear();
+
+        public static int Count => _renderers.Count;
+
+        public static IEnumerable<ChunkRenderer> All => _renderers.Values;
     }
 }

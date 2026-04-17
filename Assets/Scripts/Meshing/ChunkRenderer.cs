@@ -22,6 +22,8 @@ namespace MunCraft.Meshing
         bool _colorsDirty;
 
         public ChunkFaceMap FaceMap => _faceMap;
+        public int VertexCount { get; private set; }
+        public int TriangleCount { get; private set; }
 
         public void Initialize(Chunk chunk, ChunkManager chunkManager, Material material)
         {
@@ -61,6 +63,9 @@ namespace MunCraft.Meshing
 
             _mesh = ChunkMesher.BuildMesh(_chunk, _chunkManager, out _faceMap, out _baseColors);
             _meshFilter.sharedMesh = _mesh;
+
+            VertexCount = _mesh != null ? _mesh.vertexCount : 0;
+            TriangleCount = _mesh != null ? _mesh.triangles.Length / 3 : 0;
 
             if (_baseColors != null && _baseColors.Length > 0)
             {

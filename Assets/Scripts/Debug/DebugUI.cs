@@ -1,8 +1,10 @@
 using MunCraft.Core;
 using MunCraft.Gravity;
+using MunCraft.Meshing;
 using MunCraft.Player;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Profiler = UnityEngine.Profiling.Profiler;
 
 namespace MunCraft.Debug
 {
@@ -16,6 +18,7 @@ namespace MunCraft.Debug
         public GameBootstrap Bootstrap;
         public GravityField GravityFieldRef;
         public PlayerController Player;
+        public ChunkStreamingManager StreamingManager;
 
         [Header("Debug Visualization")]
         public bool ShowGravityVectors;
@@ -24,10 +27,19 @@ namespace MunCraft.Debug
         public float GravityVectorScale = 0.5f;
 
         bool _showUI = false;
+        Vector2 _scrollPos;
         float _sphereRadius = 12;
         float _fps;
         float _fpsTimer;
         int _fpsFrames;
+
+        // Memory stats — refreshed every 0.5s alongside FPS
+        int _memTotalVerts;
+        int _memTotalTris;
+        int _memChunksRendered;
+        float _memEstMB;
+        float _memManagedMB;
+        float _memNativeMB;
 
         void Update()
         {
@@ -35,7 +47,7 @@ namespace MunCraft.Debug
             if (kb != null && kb.backquoteKey.wasPressedThisFrame)
                 _showUI = !_showUI;
 
-            // FPS counter
+            // FPS + memory stats (shared 0.5s throttle)
             _fpsFrames++;
             _fpsTimer += Time.unscaledDeltaTime;
             if (_fpsTimer >= 0.5f)
@@ -43,7 +55,39 @@ namespace MunCraft.Debug
                 _fps = _fpsFrames / _fpsTimer;
                 _fpsFrames = 0;
                 _fpsTimer = 0;
+
+                RefreshMemoryStats();
             }
+        }
+
+        void RefreshMemoryStats()
+        {
+            // Mesh stats from all active renderers
+            int totalVerts = 0, totalTris = 0;
+            foreach (var cr in ChunkRendererRegistry.All)
+            {
+                totalVerts += cr.VertexCount;
+                totalTris += cr.TriangleCount;
+            }
+            _memTotalVerts = totalVerts;
+            _memTotalTris = totalTris;
+            _memChunksRendered = ChunkRendererRegistry.Count;
+
+            // Estimate: blocks + meshes + gravity
+            int chunkCount = Bootstrap != null && Bootstrap.ChunkManager != null
+                ? Bootstrap.ChunkManager.Chunks.Count : 0;
+            int solidBlocks = GravityFieldRef != null ? GravityFieldRef.BlockCount : 0;
+
+            long blockBytes = (long)chunkCount * 1024;
+            long meshBytes = (long)totalVerts * 40 + (long)totalTris * 3 * 4;
+            meshBytes *= 2; // base + working color buffers
+            long gravityBytes = (long)solidBlocks * 60;
+
+            _memEstMB = (blockBytes + meshBytes + gravityBytes) / (1024f * 1024f);
+            _memManagedMB = System.GC.GetTotalMemory(false) / (1024f * 1024f);
+
+            long native = Profiler.GetTotalAllocatedMemoryLong();
+            _memNativeMB = native > 0 ? native / (1024f * 1024f) : -1f;
         }
 
         void OnGUI()
@@ -53,7 +97,9 @@ namespace MunCraft.Debug
 
             if (!_showUI) return;
 
-            GUILayout.BeginArea(new Rect(10, 40, 320, 500));
+            float panelHeight = Screen.height - 60;
+            GUILayout.BeginArea(new Rect(10, 40, 340, panelHeight));
+            _scrollPos = GUILayout.BeginScrollView(_scrollPos, GUILayout.Height(panelHeight - 10));
             GUILayout.BeginVertical("box");
 
             GUILayout.Label("<b>Mun Craft Debug</b>");
@@ -97,6 +143,13 @@ namespace MunCraft.Debug
                     Bootstrap.RegenerateSphere(Mathf.RoundToInt(_sphereRadius));
             }
 
+            if (StreamingManager != null)
+            {
+                GUILayout.Label($"Render Distance: {StreamingManager.RenderDistance:F0}");
+                StreamingManager.RenderDistance = GUILayout.HorizontalSlider(
+                    StreamingManager.RenderDistance, 10f, 100f);
+            }
+
             GUILayout.Space(10);
 
             // Player info
@@ -130,6 +183,18 @@ namespace MunCraft.Debug
                 }
             }
 
+            // Memory section
+            GUILayout.Space(5);
+            GUILayout.Label("<b>--- Memory ---</b>");
+            int totalChunks = Bootstrap != null && Bootstrap.ChunkManager != null
+                ? Bootstrap.ChunkManager.Chunks.Count : 0;
+            GUILayout.Label($"Chunks: {_memChunksRendered} rendered / {totalChunks} total");
+            GUILayout.Label($"Mesh: {_memTotalVerts:N0} verts, {_memTotalTris:N0} tris");
+            GUILayout.Label($"Est. game RAM: {_memEstMB:F1} MB");
+            GUILayout.Label($"Managed heap: {_memManagedMB:F1} MB");
+            if (_memNativeMB >= 0)
+                GUILayout.Label($"Native alloc: {_memNativeMB:F1} MB");
+
             GUILayout.Space(10);
 
             // Debug visualization toggles
@@ -137,6 +202,7 @@ namespace MunCraft.Debug
             ShowChunkBounds = GUILayout.Toggle(ShowChunkBounds, "Show Chunk Bounds");
 
             GUILayout.EndVertical();
+            GUILayout.EndScrollView();
             GUILayout.EndArea();
         }
 

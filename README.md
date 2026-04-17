@@ -64,10 +64,10 @@ The scene contains a single `GameBootstrap` GameObject. Everything else (chunks,
        per-chunk mesh,
        per-face colour edits
             ^
-            | (registered in)
+            | creates/destroys
             |
-       ChunkRendererRegistry  <----  BlockMiner ----> Inventory
-       coord -> renderer             (mutates target  per-type counts
+       ChunkStreamingManager         BlockMiner ----> Inventory
+       (render-distance LOD)         (mutates target   per-type counts
                                       block's faces)  + OnChanged event
                                                             |
                                                             v
@@ -93,13 +93,15 @@ Assets/
 │   │   ├── BlockType.cs          # Block enum + 3-shade colour palette + per-type mining times
 │   │   ├── Chunk.cs              # Two byte[] arrays (grid A and grid B), 8x8x8 each
 │   │   ├── ChunkFaceMap.cs       # block -> face -> vertex range, built by the mesher
-│   │   └── ChunkManager.cs       # Owns chunks, fires OnBlockChanged
+│   │   ├── ChunkManager.cs       # Owns chunks, fires OnBlockChanged
+│   │   └── GameState.cs          # Static flags (MenuOpen etc) for cross-system coordination
 │   │
 │   ├── Meshing/
 │   │   ├── TruncOctGeometry.cs   # Vertex/face/normal tables for the 14-sided block
 │   │   ├── ChunkMesher.cs        # Builds one Mesh per chunk, also builds the face map
 │   │   ├── ChunkRenderer.cs      # MonoBehaviour per chunk, exposes per-face colour edits
-│   │   └── ChunkRendererRegistry.cs  # Static coord -> renderer lookup
+│   │   ├── ChunkRendererRegistry.cs  # Static coord -> renderer lookup
+│   │   └── ChunkStreamingManager.cs  # Render-distance streaming (load/unload renderers)
 │   │
 │   ├── Gravity/
 │   │   ├── GravityOctree.cs      # Barnes-Hut tree with incremental Add/Remove
@@ -182,6 +184,18 @@ Changes are batched: a single `Mesh.SetColors` call happens once per `LateUpdate
 
 `MunCraft/FlatBlock` is unlit, reads vertex colour straight to fragment, **cull off** so you can see chunk interiors when standing inside a tunnel. One shared material covers every chunk; all colour variation comes from vertex colours.
 
+### Render-distance streaming
+
+`ChunkStreamingManager` creates and destroys chunk renderers based on distance from the player. Block data and gravity stay loaded for the entire planet — only the mesh renderers (the expensive part) are streamed. This means gravity is always smooth regardless of what's rendered.
+
+- Chunks within `RenderDistance` get a renderer created
+- Chunks beyond `RenderDistance × 1.3` (hysteresis) get their renderer destroyed
+- Creates and destroys are throttled (default 4 per frame) to avoid frame spikes
+- `ForceLoadNearby()` is called at startup to pre-load everything within range
+- Render distance is tunable live from the debug panel
+
+At small radii (16) this has little effect since everything fits in memory. At radius 50 the difference is significant — only nearby chunks are meshed, while distant blocks still contribute to gravity correctly.
+
 ### Gravity (Barnes-Hut)
 
 Every solid block is a unit point mass. The acceleration on the player is the sum of `G · m · d / |d|³` from every block — naively O(n) per frame. The Barnes-Hut octree reduces this to O(log n):
@@ -258,10 +272,11 @@ The discovery effect ("you don't see what gold looks like until you've mined som
 `DebugUI` is an IMGUI panel (toggle: backtick). It shows:
 
 - FPS (always on, top-left)
-- Live tunables: gravity constant, theta, max gravity, sphere radius
+- Live tunables: gravity constant, theta, max gravity, sphere radius, render distance
 - Player readouts: position, distance from origin, gravity vector + magnitude, grounded, speed
 - Input readouts: WASD, mouse delta, focus state
 - Collision stats: blocks checked, collisions found, deepest penetration
+- Memory stats: chunks rendered/total, mesh verts/tris, estimated game RAM, managed heap, native alloc (editor only)
 - Toggles for gizmos: gravity vectors, chunk bounds, collision debug
 
 ## Key constants
@@ -287,6 +302,7 @@ Defaults sit on `GameBootstrap`, `GravityField`, `PlayerController`, `PlayerColl
 | `JumpForce` | 5 | PlayerController | Impulse magnitude on jump |
 | `MiningRange` | 5 | BlockMiner | World-space raycast length |
 | `FlashCount` | 12 | BlockMiner | White pulses spread over the mining duration |
+| `RenderDistance` | 30 | GameBootstrap / ChunkStreamingManager | World units; chunks beyond this don't get renderers |
 
 Mining times per block are in `BlockType.GetMiningTime()` — Grass 0.4s, Dirt 0.6s, Sand 0.5s, Stone 1.6s, Iron 2.5s, Gold 3.0s, Crystal 4.0s.
 
@@ -355,17 +371,27 @@ Done so far:
 - [x] Custom first-person controller with curved-surface gravity
 - [x] Capsule-vs-block collision with stable grounding
 - [x] Click-to-start hold-to-mine with per-block timing and flash feedback
-- [x] Procedural sphere generator with depth-based block layers
+- [x] Procedural terrain with hills, cliffs, caves, and biome regions
 - [x] Discovery-based inventory bar with per-type counts
-- [x] Debug overlay for live tuning
+- [x] Side menus (Q/E) with game pause
+- [x] Render-distance streaming (renderers only; block data + gravity always loaded)
+- [x] RAM usage estimates on the debug overlay
+- [x] Debug overlay for live tuning (scrollable, all systems)
 - [x] WebGL build pipeline + GitHub Pages deploy
 
 Possible next steps:
 
 - Block placement (right-click)
 - Hotbar / selection (currently the inventory is read-only display)
-- Larger worlds with chunk streaming and LOD
-- More interesting terrain (caves, ore veins, biomes, structures)
 - Save/load
 - CRT post-processing effect with resolution downscaling
 - Sound design
+
+### Performance notes
+
+The current streaming approach (render-distance gating of mesh renderers) has negligible impact at small radii (16) since everything fits in memory anyway. It makes a significant difference at radius 50, where only nearby chunks are meshed while all block data and gravity stay resident. The main remaining costs at large radii are:
+
+- **Generation time** — synchronous at startup, ~2s at radius 30. For radius 50+ this becomes noticeable; chunked async generation would help.
+- **Gravity octree build** — O(n log n) at startup for all blocks. Queries are O(log n) and fast. The octree is the right size to keep fully loaded.
+- **Mesh memory** — the dominant runtime cost. A middle LOD tier (simplified meshes for distant chunks rather than no mesh at all) would extend visible range without the full vertex cost. Not needed yet.
+- **Chunk remesh on mine** — currently synchronous on the main thread. Job System / Burst compilation for background meshing would help if mining at large scale causes hitches.
