@@ -156,6 +156,8 @@ namespace MunCraft.Interaction
             hf.sharedMesh = BuildSimpleBrick(_chunkManager.BlockSize, 1.02f);
             var hMat = new Material(Shader.Find("MunCraft/FlatBlock"));
             hMat.color = HighlightColor;
+            hMat.SetFloat("_FogStrength", 0f);
+            hMat.SetFloat("_VignetteStrength", 0f);
             hr.material = hMat;
             hr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             hr.receiveShadows = false;

@@ -106,6 +106,13 @@ namespace MunCraft.Debug
             menuObj.AddComponent<SideMenuManager>();
         }
 
+        void Update()
+        {
+            // Feed the player position to the shader for distance fog
+            if (_playerObj != null)
+                Shader.SetGlobalVector("_MunPlayerPos", _playerObj.transform.position);
+        }
+
         void CreateChunkRenderers()
         {
             foreach (var kvp in _chunkManager.Chunks)

@@ -19,6 +19,7 @@ namespace MunCraft.Meshing
             var triangles = new List<int>();
             var colors = new List<Color>();
             var normals = new List<Vector3>();
+            var blockCenters = new List<Vector3>(); // UV0 — block center for per-block fog/vignette
 
             faceMap = new ChunkFaceMap();
             Span<BlockAddress> neighbors = stackalloc BlockAddress[14];
@@ -38,7 +39,7 @@ namespace MunCraft.Meshing
                     var address = new BlockAddress(parity, gx, gy, gz);
 
                     Vector3 blockWorldPos = address.ToWorldPosition(chunkManager.BlockSize);
-                    Color blockColor = type.GetColor(address);
+                    Color blockColor = type.GetColor();
 
                     address.GetNeighbors(neighbors);
 
@@ -52,7 +53,7 @@ namespace MunCraft.Meshing
 
                         int vertStart = vertices.Count;
                         EmitFace(faceIdx, blockWorldPos, blockColor, chunkManager.BlockSize,
-                                 vertices, triangles, colors, normals);
+                                 vertices, triangles, colors, normals, blockCenters);
                         int vertCount = vertices.Count - vertStart;
                         faceMap.RecordFace(address, faceIdx, vertStart, vertCount);
                     }
@@ -73,13 +74,15 @@ namespace MunCraft.Meshing
             mesh.SetTriangles(triangles, 0);
             mesh.SetColors(colors);
             mesh.SetNormals(normals);
+            mesh.SetUVs(0, blockCenters); // block center for per-block fog/vignette in shader
 
             originalColors = colors.ToArray();
             return mesh;
         }
 
         static void EmitFace(int faceIdx, Vector3 blockWorldPos, Color color, float blockSize,
-            List<Vector3> vertices, List<int> triangles, List<Color> colors, List<Vector3> normals)
+            List<Vector3> vertices, List<int> triangles, List<Color> colors,
+            List<Vector3> normals, List<Vector3> blockCenters)
         {
             int[] faceVertIndices = TruncOctGeometry.Faces[faceIdx];
             Vector3 faceNormal = TruncOctGeometry.FaceNormals[faceIdx];
@@ -92,6 +95,7 @@ namespace MunCraft.Meshing
                 vertices.Add(blockWorldPos + localVert * blockSize);
                 colors.Add(color);
                 normals.Add(faceNormal);
+                blockCenters.Add(blockWorldPos);
             }
 
             int vertCount = faceVertIndices.Length;
