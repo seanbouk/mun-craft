@@ -8,13 +8,14 @@ Shader "MunCraft/FlatBlock"
         _FogColor ("Fog Color", Color) = (0.055, 0, 0.235, 1)
         _FogStart ("Fog Start", Float) = 3
         _FogEnd ("Fog End", Float) = 35
-        _FogStrength ("Fog Strength", Range(0, 1)) = 1.0
+        _FogStrength ("Fog Strength", Range(0, 1)) = 0.633
+        _FogCurve ("Fog Curve (1=linear, higher=more near detail)", Range(0.5, 5)) = 2.17
 
         [Header(Angle Vignette)]
         _VignetteColor ("Vignette Color", Color) = (0.2, 0.031, 0, 1)
         _VignetteInnerDot ("Inner Dot (dead spot edge)", Range(0, 1)) = 0.682
         _VignetteOuterDot ("Outer Dot (full vignette)", Range(-0.5, 1)) = 0.38
-        _VignetteStrength ("Vignette Strength", Range(0, 1)) = 0.709
+        _VignetteStrength ("Vignette Strength", Range(0, 1)) = 0.294
     }
 
     SubShader
@@ -62,6 +63,7 @@ Shader "MunCraft/FlatBlock"
                 float _FogStart;
                 float _FogEnd;
                 float _FogStrength;
+                float _FogCurve;
                 float4 _VignetteColor;
                 float _VignetteInnerDot;
                 float _VignetteOuterDot;
@@ -86,8 +88,13 @@ Shader "MunCraft/FlatBlock"
                 float3 blockCenter = input.blockCenter;
 
                 // Distance fog: 0 = no fog, 1 = full fog
+                // _FogCurve controls the falloff shape:
+                //   1.0 = linear (even change near and far)
+                //   2-3 = more change near the camera, flattens out at distance
+                //   0.5 = opposite (slow near, steep far)
                 float dist = distance(blockCenter, _MunPlayerPos);
-                output.fogFactor = saturate((dist - _FogStart) / max(_FogEnd - _FogStart, 0.001));
+                float fogLinear = saturate((dist - _FogStart) / max(_FogEnd - _FogStart, 0.001));
+                output.fogFactor = pow(fogLinear, 1.0 / _FogCurve);
 
                 // Angle vignette: dot between block direction and camera forward.
                 // 1 = straight ahead (no vignette), low = periphery (full vignette).
