@@ -137,8 +137,10 @@ namespace MunCraft.Debug
         {
             _playerObj = new GameObject("Player");
 
-            // Position just above the surface
-            float surfaceHeight = SphereRadius * BlockSize + 0.559f * BlockSize;
+            // Position above the actual terrain surface (accounts for hills)
+            float terrainDisplacement = SphereGenerator.TerrainHeight(
+                Vector3.up, SphereRadius * BlockSize, SphereGenerator.Settings.Default);
+            float surfaceHeight = SphereRadius * BlockSize + terrainDisplacement + 0.559f * BlockSize;
             Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight * 0.5f + 0.5f);
             _playerObj.transform.position = spawnPos;
 
@@ -229,8 +231,10 @@ namespace MunCraft.Debug
             var filledBlocks = SphereGenerator.Generate(_chunkManager, SphereRadius, BlockSize);
             _gravityField.Initialize(_chunkManager, filledBlocks);
 
-            // Reset player, then stream nearby chunks
-            float surfaceHeight = SphereRadius * BlockSize + 0.559f * BlockSize;
+            // Reset player above actual terrain, then stream nearby chunks
+            float terrainDisplacement = SphereGenerator.TerrainHeight(
+                Vector3.up, SphereRadius * BlockSize, SphereGenerator.Settings.Default);
+            float surfaceHeight = SphereRadius * BlockSize + terrainDisplacement + 0.559f * BlockSize;
             Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight * 0.5f + 0.5f);
             var controller = _playerObj.GetComponent<PlayerController>();
             controller.Teleport(spawnPos, Vector3.up);

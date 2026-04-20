@@ -97,7 +97,11 @@ namespace MunCraft.Debug
         //  Terrain height
         // ---------------------------------------------------------------
 
-        static float TerrainHeight(Vector3 dir, float radius, Settings s)
+        /// <summary>
+        /// Height displacement above (or below) the base radius at a given direction.
+        /// Public so spawn logic can query the actual surface height.
+        /// </summary>
+        public static float TerrainHeight(Vector3 dir, float radius, Settings s)
         {
             float x = dir.x, y = dir.y, z = dir.z;
 
