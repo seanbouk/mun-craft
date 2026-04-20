@@ -163,9 +163,17 @@ namespace MunCraft.Debug
             cam.nearClipPlane = 0.1f;
             cam.farClipPlane = 200f;
             cam.fieldOfView = 75f;
-            cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.05f, 0.05f, 0.1f);
+            cam.clearFlags = CameraClearFlags.Skybox;
+            cam.backgroundColor = new Color(0.01f, 0.01f, 0.06f); // fallback if skybox fails
             cameraObj.AddComponent<PlayerCamera>();
+
+            // Sky — procedural gradient + stars
+            var skyShader = Shader.Find("MunCraft/Sky");
+            if (skyShader != null)
+            {
+                var skyMat = new Material(skyShader);
+                RenderSettings.skybox = skyMat;
+            }
 
             // Remove the default camera
             var defaultCam = Camera.main;
