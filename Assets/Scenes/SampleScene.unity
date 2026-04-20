@@ -412,7 +412,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 55376de973f2e0648a7a51f5de7da316, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MunCraft.Debug.GameBootstrap
-  SphereRadius: 16
+  SphereRadius: 30
   BlockSize: 1
   GravityConstant: 1
   BarnesHutTheta: 0.5
@@ -420,6 +420,7 @@ MonoBehaviour:
   PlayerRadius: 0.3
   MoveSpeed: 5
   JumpForce: 10
+  RenderDistance: 30
 --- !u!4 &741555207
 Transform:
   m_ObjectHideFlags: 0
