@@ -82,8 +82,11 @@ namespace MunCraft.Debug
 
                 // Determine block type
                 bool isTopFacing = IsTopFacing(worldPos, dir, dist, radiusWorld, blockSize, s);
+                float steepness = SurfaceSteepness(worldPos, dir, radiusWorld, blockSize, s);
                 float biome = BiomeNoise(dir);
-                BlockType type = PickBlockType(worldPos, depth, isTopFacing, biome, radiusWorld);
+                float terrainDisp = surfaceHeight - radiusWorld; // positive = hill, negative = valley
+                BlockType type = PickBlockType(worldPos, depth, isTopFacing, steepness,
+                                               biome, radiusWorld, terrainDisp);
 
                 chunkManager.SetBlockSilent(address, type);
                 filled.Add(address);
@@ -164,6 +167,33 @@ namespace MunCraft.Debug
         }
 
         // ---------------------------------------------------------------
+        //  Surface steepness — 0 = flat (top-facing), 1 = vertical cliff
+        //  Estimated by checking terrain height at nearby directions
+        // ---------------------------------------------------------------
+
+        static float SurfaceSteepness(Vector3 worldPos, Vector3 dir, float radius,
+                                       float blockSize, Settings s)
+        {
+            // Sample terrain height at 4 nearby directions to estimate slope
+            float h0 = TerrainHeight(dir, radius, s);
+            float step = blockSize / radius; // angular step on the unit sphere
+
+            // Perturb direction in two orthogonal directions
+            Vector3 tangent = Vector3.Cross(dir, Vector3.up);
+            if (tangent.sqrMagnitude < 0.01f) tangent = Vector3.Cross(dir, Vector3.right);
+            tangent.Normalize();
+            Vector3 bitangent = Vector3.Cross(dir, tangent).normalized;
+
+            float h1 = TerrainHeight((dir + tangent * step).normalized, radius, s);
+            float h2 = TerrainHeight((dir - tangent * step).normalized, radius, s);
+            float h3 = TerrainHeight((dir + bitangent * step).normalized, radius, s);
+            float h4 = TerrainHeight((dir - bitangent * step).normalized, radius, s);
+
+            float slope = Mathf.Max(Mathf.Abs(h1 - h2), Mathf.Abs(h3 - h4)) / (2f * blockSize);
+            return Mathf.Clamp01(slope); // 0 = flat, 1+ = cliff
+        }
+
+        // ---------------------------------------------------------------
         //  Biome noise (low-frequency, sampled on the sphere surface)
         // ---------------------------------------------------------------
 
@@ -178,30 +208,51 @@ namespace MunCraft.Debug
         // ---------------------------------------------------------------
 
         static BlockType PickBlockType(Vector3 worldPos, float depth,
-                                        bool isTopFacing, float biome, float radius)
+                                        bool isTopFacing, float steepness,
+                                        float biome, float radius, float terrainDisp)
         {
-            // --- Surface (top-facing, very thin) ---
+            float n = QuickHash(worldPos);
+
+            // --- Surface (top-facing, thin layer) ---
             if (isTopFacing && depth < 1.5f)
             {
-                if (biome < 0.30f) return BlockType.Ice;
-                if (biome > 0.55f) return BlockType.Plant;
+                // Ice on mountain tops (high terrain displacement)
+                float peakThreshold = radius * 0.10f; // top 10% of height range
+                if (terrainDisp > peakThreshold)
+                    return BlockType.Ice;
+
+                // Rare copper nuggets on surface near dirt/rock boundaries
+                if (n > 0.97f && steepness > 0.15f && steepness < 0.6f)
+                    return BlockType.Copper;
+
+                // Flat → plant, steep → rock, in between → dirt (with randomness)
+                float plantChance = Mathf.Clamp01(1f - steepness * 2.5f); // 1 at flat, 0 at steep
+                float rockChance = Mathf.Clamp01(steepness * 2f - 0.4f);  // 0 at flat, 1 at steep
+                // remainder is dirt
+
+                float roll = QuickHash(worldPos * 1.7f);
+                if (roll < plantChance * 0.8f) return BlockType.Plant;
+                if (roll > 1f - rockChance * 0.7f) return BlockType.Rock;
                 return BlockType.Dirt;
             }
 
-            // --- Near surface (cliff face / just below plant) ---
+            // --- Near surface (cliff face / just below surface) ---
             if (depth < 4f)
             {
-                if (biome < 0.25f) return BlockType.Ice;
-                if (depth < 2f) return BlockType.Dirt;
-                // Mix of dirt and rock on cliff faces
-                float n = QuickHash(worldPos);
-                return n > 0.5f ? BlockType.Rock : BlockType.Dirt;
+                // Ice near peaks even on cliff faces
+                if (terrainDisp > radius * 0.10f && n > 0.5f)
+                    return BlockType.Ice;
+
+                // Steep = mostly rock, moderate = mix, gentle = dirt
+                if (steepness > 0.5f) return BlockType.Rock;
+                if (steepness > 0.25f)
+                    return n > 0.4f ? BlockType.Rock : BlockType.Dirt;
+                return BlockType.Dirt;
             }
 
             // --- Mid depth (mostly rock, occasional dirt + ores) ---
             if (depth < 10f)
             {
-                float n = QuickHash(worldPos);
                 if (n > 0.93f) return BlockType.Hematite;
                 if (n > 0.85f) return BlockType.Dirt;
                 return BlockType.Rock;
@@ -209,10 +260,10 @@ namespace MunCraft.Debug
 
             // --- Deep (rock + ore veins) ---
             {
-                float n = QuickHash(worldPos * 3f);
-                if (n > 0.97f) return BlockType.Copper;
-                if (n > 0.93f) return BlockType.Hematite;
-                if (n > 0.88f && depth > 15f) return BlockType.Cassiterite;
+                float deepN = QuickHash(worldPos * 3f);
+                if (deepN > 0.97f) return BlockType.Copper;
+                if (deepN > 0.93f) return BlockType.Hematite;
+                if (deepN > 0.88f && depth > 15f) return BlockType.Cassiterite;
                 return BlockType.Rock;
             }
         }
