@@ -51,6 +51,9 @@ ExportedObj/
 
 # Local Claude Code settings
 .claude/
+
+# Unity script reference cache
+/[Rr]efs/
 .consulo/
 *.csproj
 *.unityproj
