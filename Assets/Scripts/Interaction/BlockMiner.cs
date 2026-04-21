@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using MunCraft.Core;
+using MunCraft.Crafting;
 using MunCraft.InventorySystem;
 using MunCraft.Meshing;
 using UnityEngine;
@@ -66,8 +67,12 @@ namespace MunCraft.Interaction
             if (_miningBlock.HasValue && (!holding || _targetBlock != _miningBlock))
                 StopMining();
 
-            // Only START on a fresh click
-            if (justClicked && _targetBlock.HasValue && _miningBlock == null)
+            // Coffee = continuous mining (hold to auto-start on next block)
+            // Without coffee: require a fresh click per block
+            bool hasCoffee = CraftingState.Instance != null && CraftingState.Instance.HasCoffee;
+            bool canStart = hasCoffee ? holding : justClicked;
+
+            if (canStart && _targetBlock.HasValue && _miningBlock == null)
                 StartMining(_targetBlock.Value);
 
             // Continue mining
@@ -81,7 +86,7 @@ namespace MunCraft.Interaction
                     var minedType = _chunkManager.GetBlock(b);
                     StopMining(); // restore colors first
                     _chunkManager.SetBlock(b, BlockType.Air); // then destroy
-                    _inventory?.Add(minedType);
+                    _inventory?.AddBlock(minedType);
                     return;
                 }
 
@@ -94,7 +99,10 @@ namespace MunCraft.Interaction
         void StartMining(BlockAddress addr)
         {
             _miningBlock = addr;
-            _miningTime = _chunkManager.GetBlock(addr).GetMiningTime();
+            float baseTime = _chunkManager.GetBlock(addr).GetMiningTime();
+            // Each pick gives 50% cumulative speed boost
+            int picks = CraftingState.Instance != null ? CraftingState.Instance.PickCount : 0;
+            _miningTime = baseTime / (1f + 0.5f * picks);
             _miningProgress = 0f;
 
             var chunkCoord = addr.GetChunkCoord(Chunk.Size);

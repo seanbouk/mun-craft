@@ -1,15 +1,15 @@
 using System;
 using MunCraft.Core;
+using MunCraft.Crafting;
 using UnityEngine;
 
 namespace MunCraft.InventorySystem
 {
     /// <summary>
-    /// IMGUI inventory bar across the top of the screen. One slot per
-    /// non-Air block type, in enum order. Empty slots show as dark
-    /// squares; once you've collected at least one of a type, the slot
-    /// fills with that block's colour. Each slot has a name label
-    /// underneath and a count badge in the bottom-right while owned.
+    /// IMGUI inventory bar across the top of the screen. Shows raw materials
+    /// (block types) — one slot per type. Empty slots are dark; once you've
+    /// collected at least one, the slot fills with the item's colour.
+    /// Labels + count badges.
     /// </summary>
     public class InventoryUI : MonoBehaviour
     {
@@ -30,14 +30,15 @@ namespace MunCraft.InventorySystem
 
         public Inventory Inventory;
 
-        BlockType[] _types;
+        // Raw material items to display (derived from BlockType, skipping Air)
+        CraftingItem[] _rawItems;
         Texture2D _whitePixel;
         GUIStyle _labelStyle;
         GUIStyle _countStyle;
 
         void Start()
         {
-            BuildTypeList();
+            BuildItemList();
             _whitePixel = new Texture2D(1, 1);
             _whitePixel.SetPixel(0, 0, Color.white);
             _whitePixel.Apply();
@@ -48,14 +49,16 @@ namespace MunCraft.InventorySystem
             if (_whitePixel != null) Destroy(_whitePixel);
         }
 
-        void BuildTypeList()
+        void BuildItemList()
         {
-            var values = (BlockType[])Enum.GetValues(typeof(BlockType));
+            // Show one slot per non-Air BlockType, mapped to CraftingItem
+            var blockTypes = (BlockType[])Enum.GetValues(typeof(BlockType));
             int count = 0;
-            foreach (var v in values) if (v != BlockType.Air) count++;
-            _types = new BlockType[count];
+            foreach (var bt in blockTypes) if (bt != BlockType.Air) count++;
+            _rawItems = new CraftingItem[count];
             int i = 0;
-            foreach (var v in values) if (v != BlockType.Air) _types[i++] = v;
+            foreach (var bt in blockTypes)
+                if (bt != BlockType.Air) _rawItems[i++] = bt.ToCraftingItem();
         }
 
         void EnsureStyles()
@@ -86,62 +89,56 @@ namespace MunCraft.InventorySystem
 
         void OnGUI()
         {
-            if (_types == null || _types.Length == 0) return;
+            if (_rawItems == null || _rawItems.Length == 0) return;
             EnsureStyles();
 
-            int totalWidth = _types.Length * SlotSize + (_types.Length - 1) * SlotGap;
+            int totalWidth = _rawItems.Length * SlotSize + (_rawItems.Length - 1) * SlotGap;
             int startX = (Screen.width - totalWidth) / 2;
             int y = TopMargin;
 
-            for (int i = 0; i < _types.Length; i++)
+            for (int i = 0; i < _rawItems.Length; i++)
             {
                 int x = startX + i * (SlotSize + SlotGap);
-                DrawSlot(x, y, _types[i]);
+                DrawSlot(x, y, _rawItems[i]);
             }
         }
 
-        void DrawSlot(int x, int y, BlockType type)
+        void DrawSlot(int x, int y, CraftingItem item)
         {
-            // Border
             DrawSolidRect(new Rect(x, y, SlotSize, SlotSize), BorderColor);
 
-            // Inner fill — block colour if owned, dark grey otherwise
             var inner = new Rect(
                 x + BorderWidth,
                 y + BorderWidth,
                 SlotSize - BorderWidth * 2,
                 SlotSize - BorderWidth * 2);
 
-            int count = Inventory != null ? Inventory.GetCount(type) : 0;
+            int count = Inventory != null ? Inventory.GetCount(item) : 0;
             bool owned = count > 0;
-            DrawSolidRect(inner, owned ? type.GetColor() : EmptySlotColor);
+            DrawSolidRect(inner, owned ? item.GetColor() : EmptySlotColor);
 
-            // Count badge in bottom-right corner (with subtle shadow for legibility)
             if (owned)
             {
                 var countRect = new Rect(x, y, SlotSize, SlotSize);
                 DrawTextWithShadow(countRect, count.ToString(), _countStyle);
             }
 
-            // Label underneath
             var labelRect = new Rect(
                 x - SlotGap / 2,
                 y + SlotSize + LabelGap,
                 SlotSize + SlotGap,
                 LabelHeight);
-            DrawTextWithShadow(labelRect, type.ToString(), _labelStyle);
+            DrawTextWithShadow(labelRect, item.DisplayName(), _labelStyle);
         }
 
         void DrawTextWithShadow(Rect rect, string text, GUIStyle style)
         {
             var prevColor = style.normal.textColor;
 
-            // Shadow (offset 1px down-right)
             style.normal.textColor = TextShadowColor;
             var shadowRect = new Rect(rect.x + 1, rect.y + 1, rect.width, rect.height);
             GUI.Label(shadowRect, text, style);
 
-            // Main text
             style.normal.textColor = prevColor;
             GUI.Label(rect, text, style);
         }

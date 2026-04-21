@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using MunCraft.Core;
+using MunCraft.Crafting;
 using MunCraft.Gravity;
 using MunCraft.Interaction;
 using MunCraft.InventorySystem;
@@ -87,6 +88,9 @@ namespace MunCraft.Debug
             var inventoryUI = inventoryObj.AddComponent<InventoryUI>();
             inventoryUI.Inventory = _inventory;
 
+            // Crafting state (machines, slots, tool unlocks)
+            inventoryObj.AddComponent<CraftingState>();
+
             // Spawn player (before streaming so we have a player transform)
             SpawnPlayer();
 
@@ -101,9 +105,11 @@ namespace MunCraft.Debug
             // Set up debug UI
             SetupDebugUI();
 
-            // Side menus (Q / E)
+            // Side menus (Q / E) + Machines UI in the right panel
             var menuObj = new GameObject("SideMenus");
             menuObj.AddComponent<SideMenuManager>();
+            var machinesUI = menuObj.AddComponent<MachinesMenuUI>();
+            machinesUI.Inventory = _inventory;
         }
 
         void Update()

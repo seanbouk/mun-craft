@@ -7,8 +7,11 @@ namespace MunCraft.UI
     /// <summary>
     /// Two slide-in panels (Q = left, E = right). While a panel is open
     /// the game is paused and the mouse cursor is visible. Opening one
-    /// panel auto-closes the other. Panels have no content yet — just a
-    /// dark background, a title area, and a close button.
+    /// panel auto-closes the other.
+    ///
+    /// The left panel renders its own placeholder content. The right panel
+    /// exposes its state (RightSlide, IsRightOpen, RightContentRect) so
+    /// MachinesMenuUI can draw inside it.
     /// </summary>
     public class SideMenuManager : MonoBehaviour
     {
@@ -20,12 +23,11 @@ namespace MunCraft.UI
         public float SlideSpeed = 6f;
 
         [Header("Colours")]
-        public Color PanelBackground = new Color(0.08f, 0.08f, 0.10f, 0.92f);
+        public Color PanelBackground = new Color(0.043f, 0.118f, 0.173f, 0.92f); // blueprint bg
         public Color HintBackground = new Color(0.12f, 0.12f, 0.15f, 0.85f);
         public Color HintText = new Color(0.85f, 0.85f, 0.90f, 1f);
-        public Color CloseButtonColor = new Color(0.85f, 0.85f, 0.90f, 1f);
+        public Color CloseButtonColor = new Color(0.91f, 0.96f, 1f, 1f);
 
-        // 0 = fully closed, 1 = fully open
         float _leftSlide;
         float _rightSlide;
         bool _leftOpen;
@@ -36,6 +38,16 @@ namespace MunCraft.UI
         GUIStyle _closeStyle;
         GUIStyle _titleStyle;
 
+        // Public state for MachinesMenuUI to read
+        public bool IsRightOpen => _rightOpen;
+        public float RightSlide => _rightSlide;
+        public Rect RightPanelRect { get; private set; }
+        public Rect RightContentRect { get; private set; }
+
+        public static SideMenuManager Instance { get; private set; }
+
+        void Awake() { Instance = this; }
+
         void Start()
         {
             _whitePixel = new Texture2D(1, 1);
@@ -45,7 +57,7 @@ namespace MunCraft.UI
 
         void OnDestroy()
         {
-            // Restore timeScale if destroyed while open
+            if (Instance == this) Instance = null;
             if (GameState.MenuOpen)
             {
                 Time.timeScale = 1f;
@@ -61,25 +73,19 @@ namespace MunCraft.UI
 
             if (kb.qKey.wasPressedThisFrame)
             {
-                if (_leftOpen)
-                    CloseAll();
-                else
-                    OpenLeft();
+                if (_leftOpen) CloseAll();
+                else OpenLeft();
             }
             else if (kb.eKey.wasPressedThisFrame)
             {
-                if (_rightOpen)
-                    CloseAll();
-                else
-                    OpenRight();
+                if (_rightOpen) CloseAll();
+                else OpenRight();
             }
 
-            // Animate slides using unscaledDeltaTime (timeScale may be 0)
             float dt = Time.unscaledDeltaTime * SlideSpeed;
             _leftSlide = Mathf.MoveTowards(_leftSlide, _leftOpen ? 1f : 0f, dt);
             _rightSlide = Mathf.MoveTowards(_rightSlide, _rightOpen ? 1f : 0f, dt);
 
-            // Update global state
             bool anyOpen = _leftOpen || _rightOpen;
             if (anyOpen && !GameState.MenuOpen)
             {
@@ -97,23 +103,10 @@ namespace MunCraft.UI
             }
         }
 
-        void OpenLeft()
-        {
-            _leftOpen = true;
-            _rightOpen = false;
-        }
-
-        void OpenRight()
-        {
-            _rightOpen = true;
-            _leftOpen = false;
-        }
-
-        void CloseAll()
-        {
-            _leftOpen = false;
-            _rightOpen = false;
-        }
+        void OpenLeft() { _leftOpen = true; _rightOpen = false; }
+        void OpenRight() { _rightOpen = true; _leftOpen = false; }
+        public void CloseAll() { _leftOpen = false; _rightOpen = false; }
+        public void CloseRight() { _rightOpen = false; }
 
         void EnsureStyles()
         {
@@ -155,65 +148,55 @@ namespace MunCraft.UI
         {
             EnsureStyles();
             DrawHints();
-            if (_leftSlide > 0.001f) DrawPanel(isLeft: true, _leftSlide);
-            if (_rightSlide > 0.001f) DrawPanel(isLeft: false, _rightSlide);
+            if (_leftSlide > 0.001f) DrawLeftPanel(_leftSlide);
+            if (_rightSlide > 0.001f) DrawRightPanelChrome(_rightSlide);
         }
 
         void DrawHints()
         {
-            // Don't draw hints while a panel is open — the panel itself is visible
             if (_leftOpen || _rightOpen) return;
 
-            float hintW = 48, hintH = 48;
-            float margin = 12;
+            float hintW = 48, hintH = 48, margin = 12;
 
-            // Left hint — top-left, below inventory bar area
             var leftRect = new Rect(margin, 90, hintW, hintH);
             DrawSolidRect(leftRect, HintBackground);
-            GUI.Label(leftRect, "Q \u25C1", _hintStyle); // Q ◁
+            GUI.Label(leftRect, "Q \u25C1", _hintStyle);
 
-            // Right hint — top-right
-            var rightRect = new Rect(Screen.width - hintW - margin, 90, hintW, hintH);
+            // Right hint shows "Machines"
+            float rHintW = 100;
+            var rightRect = new Rect(Screen.width - rHintW - margin, 90, rHintW, hintH);
             DrawSolidRect(rightRect, HintBackground);
-            GUI.Label(rightRect, "\u25B7 E", _hintStyle); // ▷ E
+            GUI.Label(rightRect, "\u25B7 E", _hintStyle);
+            // Small label below
+            var labelRect = new Rect(rightRect.x, rightRect.yMax + 2, rHintW, 14);
+            var smallStyle = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter,
+                fontSize = 9,
+            };
+            smallStyle.normal.textColor = new Color(0.7f, 0.8f, 0.9f, 0.6f);
+            GUI.Label(labelRect, "MACHINES", smallStyle);
         }
 
-        void DrawPanel(bool isLeft, float slide)
+        void DrawLeftPanel(float slide)
         {
             float panelW = Screen.width * PanelWidthFraction;
             float panelH = Screen.height - PanelTopMargin - PanelBottomMargin;
             float panelY = PanelTopMargin;
-
-            // Slide from off-screen to on-screen
-            float targetX = isLeft ? 0 : Screen.width - panelW;
-            float offscreenX = isLeft ? -panelW : Screen.width;
-            float panelX = Mathf.Lerp(offscreenX, targetX, slide);
+            float panelX = Mathf.Lerp(-panelW, 0, slide);
 
             var panelRect = new Rect(panelX, panelY, panelW, panelH);
             DrawSolidRect(panelRect, PanelBackground);
 
-            // Header bar
             float headerH = 48;
-            var headerRect = new Rect(panelX, panelY, panelW, headerH);
+            GUI.Label(new Rect(panelX, panelY, panelW, headerH), "Menu", _titleStyle);
 
-            // Title (placeholder)
-            string title = isLeft ? "Menu" : "Menu";
-            GUI.Label(headerRect, title, _titleStyle);
-
-            // Close button — top corner of panel (right for left panel, left for right panel)
             float closeSize = 36;
-            float closeX = isLeft
-                ? panelX + panelW - closeSize - 8
-                : panelX + 8;
-            var closeRect = new Rect(closeX, panelY + 6, closeSize, closeSize);
-
-            // Draw close button background on hover
+            var closeRect = new Rect(panelX + panelW - closeSize - 8, panelY + 6, closeSize, closeSize);
             if (closeRect.Contains(Event.current.mousePosition))
                 DrawSolidRect(closeRect, new Color(1f, 1f, 1f, 0.1f));
+            GUI.Label(closeRect, "\u2715", _closeStyle);
 
-            GUI.Label(closeRect, "\u2715", _closeStyle); // ✕
-
-            // Click to close
             if (Event.current.type == EventType.MouseDown
                 && Event.current.button == 0
                 && closeRect.Contains(Event.current.mousePosition))
@@ -221,6 +204,36 @@ namespace MunCraft.UI
                 CloseAll();
                 Event.current.Use();
             }
+        }
+
+        /// <summary>
+        /// Draws the right panel background, header, and close button.
+        /// Exposes RightPanelRect and RightContentRect so MachinesMenuUI
+        /// can draw inside on the same frame.
+        /// </summary>
+        /// <summary>
+        /// Computes the right panel rects but draws NOTHING.
+        /// MachinesMenuUI handles all rendering for the right panel
+        /// to avoid IMGUI ordering issues.
+        /// </summary>
+        void DrawRightPanelChrome(float slide)
+        {
+            float panelW = Screen.width * PanelWidthFraction;
+            float panelH = Screen.height - PanelTopMargin - PanelBottomMargin;
+            float panelY = PanelTopMargin;
+            float targetX = Screen.width - panelW;
+            float panelX = Mathf.Lerp(Screen.width, targetX, slide);
+
+            RightPanelRect = new Rect(panelX, panelY, panelW, panelH);
+
+            float headerH = 48;
+            float pad = 12;
+            RightContentRect = new Rect(
+                panelX + pad,
+                panelY + headerH + pad,
+                panelW - pad * 2,
+                panelH - headerH - pad * 2
+            );
         }
 
         void DrawSolidRect(Rect rect, Color color)

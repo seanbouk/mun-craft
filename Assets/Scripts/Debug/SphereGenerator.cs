@@ -183,37 +183,37 @@ namespace MunCraft.Debug
             // --- Surface (top-facing, very thin) ---
             if (isTopFacing && depth < 1.5f)
             {
-                if (biome < 0.30f) return BlockType.Sand;
-                if (biome > 0.55f) return BlockType.Grass;
+                if (biome < 0.30f) return BlockType.Ice;
+                if (biome > 0.55f) return BlockType.Plant;
                 return BlockType.Dirt;
             }
 
-            // --- Near surface (cliff face / just below grass) ---
+            // --- Near surface (cliff face / just below plant) ---
             if (depth < 4f)
             {
-                if (biome < 0.25f) return BlockType.Sand;
+                if (biome < 0.25f) return BlockType.Ice;
                 if (depth < 2f) return BlockType.Dirt;
-                // Mix of dirt and stone on cliff faces
+                // Mix of dirt and rock on cliff faces
                 float n = QuickHash(worldPos);
-                return n > 0.5f ? BlockType.Stone : BlockType.Dirt;
+                return n > 0.5f ? BlockType.Rock : BlockType.Dirt;
             }
 
-            // --- Mid depth (mostly stone, occasional dirt) ---
+            // --- Mid depth (mostly rock, occasional dirt + ores) ---
             if (depth < 10f)
             {
                 float n = QuickHash(worldPos);
-                if (n > 0.93f) return BlockType.Iron;
+                if (n > 0.93f) return BlockType.Hematite;
                 if (n > 0.85f) return BlockType.Dirt;
-                return BlockType.Stone;
+                return BlockType.Rock;
             }
 
-            // --- Deep (stone + ore veins) ---
+            // --- Deep (rock + ore veins) ---
             {
                 float n = QuickHash(worldPos * 3f);
-                if (n > 0.97f) return BlockType.Gold;
-                if (n > 0.93f) return BlockType.Iron;
-                if (n > 0.88f && depth > 15f) return BlockType.Crystal;
-                return BlockType.Stone;
+                if (n > 0.97f) return BlockType.Copper;
+                if (n > 0.93f) return BlockType.Hematite;
+                if (n > 0.88f && depth > 15f) return BlockType.Cassiterite;
+                return BlockType.Rock;
             }
         }
 
