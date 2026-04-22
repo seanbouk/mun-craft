@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using MunCraft.Crafting;
 using UnityEngine;
 
@@ -18,8 +19,9 @@ namespace MunCraft.UI
 
         Texture2D _pixel;
         Vector2 _scrollPos;
-        Font _emojiFont;
+        Font _emojiFont;         // OS font (editor/standalone only)
         GUIStyle _emojiStyle;
+        readonly Dictionary<string, Texture2D> _emojiTextures = new();
         GUIStyle _headerStyle;
         GUIStyle _countStyle;
         GUIStyle _nameStyle;
@@ -37,16 +39,20 @@ namespace MunCraft.UI
             _pixel.SetPixel(0, 0, Color.white);
             _pixel.Apply();
 
-            // Try to load an emoji-capable font from the OS
-            string[] emojiFontNames = {
-                "Segoe UI Emoji",      // Windows
-                "Apple Color Emoji",   // macOS / iOS
-                "Noto Color Emoji",    // Linux / Android
-            };
-            foreach (var name in emojiFontNames)
+            // Try to load an emoji-capable font from the OS.
+            // WebGL can't access OS fonts (browser sandbox), so skip it there.
+            if (Application.platform != RuntimePlatform.WebGLPlayer)
             {
-                _emojiFont = Font.CreateDynamicFontFromOSFont(name, 28);
-                if (_emojiFont != null) break;
+                string[] emojiFontNames = {
+                    "Segoe UI Emoji",      // Windows
+                    "Apple Color Emoji",   // macOS / iOS
+                    "Noto Color Emoji",    // Linux / Android
+                };
+                foreach (var name in emojiFontNames)
+                {
+                    _emojiFont = Font.CreateDynamicFontFromOSFont(name, 28);
+                    if (_emojiFont != null) break;
+                }
             }
         }
 
@@ -215,9 +221,24 @@ namespace MunCraft.UI
                     // Subtle background
                     Solid(rowRect, new Color(Accent.r, Accent.g, Accent.b, 0.08f));
 
-                    // Emoji (left) — nudged down to vertically centre with the text
-                    var emojiRect = new Rect(rowRect.x + 4, rowRect.y, 30, rowH);
-                    GUI.Label(emojiRect, recipes[r].AchievementEmoji, _emojiStyle);
+                    // Emoji image (left) — loaded from Resources/Emoji as PNG
+                    var emojiTex = GetEmojiTexture(recipes[r].AchievementName);
+                    if (emojiTex != null)
+                    {
+                        var emojiRect = new Rect(rowRect.x + 4, rowRect.y + 2, rowH - 4, rowH - 4);
+                        GUI.DrawTexture(emojiRect, emojiTex, ScaleMode.ScaleToFit);
+                    }
+                    else if (_emojiFont != null)
+                    {
+                        // Fallback: OS emoji font (editor/standalone)
+                        var emojiRect = new Rect(rowRect.x + 4, rowRect.y, 30, rowH);
+                        GUI.Label(emojiRect, recipes[r].AchievementEmoji, _emojiStyle);
+                    }
+                    else
+                    {
+                        var dotRect = new Rect(rowRect.x + 10, rowRect.y + rowH / 2 - 6, 12, 12);
+                        Solid(dotRect, Accent);
+                    }
 
                     // Name + recipe
                     string recipe = string.Join(" + ",
@@ -256,6 +277,22 @@ namespace MunCraft.UI
 
                 GUILayout.Space(2);
             }
+        }
+
+        /// <summary>
+        /// Load an emoji PNG from Resources/Emoji by achievement name.
+        /// "Mud Pie" → Resources/Emoji/mud_pie.png. Cached after first load.
+        /// </summary>
+        Texture2D GetEmojiTexture(string achievementName)
+        {
+            if (_emojiTextures.TryGetValue(achievementName, out var cached))
+                return cached;
+
+            // Convert "Mud Pie" → "mud_pie"
+            string filename = achievementName.ToLowerInvariant().Replace(' ', '_');
+            var tex = Resources.Load<Texture2D>("Emoji/" + filename);
+            _emojiTextures[achievementName] = tex; // cache even if null
+            return tex;
         }
 
         void Solid(Rect r, Color c)
