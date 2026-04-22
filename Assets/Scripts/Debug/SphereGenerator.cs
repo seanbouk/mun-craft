@@ -207,46 +207,60 @@ namespace MunCraft.Debug
         //  Block type assignment
         // ---------------------------------------------------------------
 
+        /// <summary>
+        /// Low-frequency noise on the sphere surface for large coherent patches
+        /// of rock/dirt/plant. Separate from BiomeNoise so they don't correlate.
+        /// </summary>
+        static float SurfaceTypeNoise(Vector3 dir)
+        {
+            return FBM(dir.x * 3.5f + 200f, dir.y * 3.5f + 200f, dir.z * 3.5f + 200f,
+                       3, 2f, 0.5f);
+        }
+
         static BlockType PickBlockType(Vector3 worldPos, float depth,
                                         bool isTopFacing, float steepness,
                                         float biome, float radius, float terrainDisp)
         {
             float n = QuickHash(worldPos);
+            Vector3 dir = worldPos.normalized;
 
             // --- Surface (top-facing, thin layer) ---
             if (isTopFacing && depth < 1.5f)
             {
-                // Ice on mountain tops (high terrain displacement)
-                float peakThreshold = radius * 0.10f; // top 10% of height range
-                if (terrainDisp > peakThreshold)
+                // Ice on mountain tops
+                if (terrainDisp > radius * 0.10f)
                     return BlockType.Ice;
 
-                // Rare copper nuggets on surface near dirt/rock boundaries
+                // Rare copper nuggets at moderate steepness
                 if (n > 0.97f && steepness > 0.15f && steepness < 0.6f)
                     return BlockType.Copper;
 
-                // Flat → plant, steep → rock, in between → dirt (with randomness)
-                float plantChance = Mathf.Clamp01(1f - steepness * 2.5f); // 1 at flat, 0 at steep
-                float rockChance = Mathf.Clamp01(steepness * 2f - 0.4f);  // 0 at flat, 1 at steep
-                // remainder is dirt
+                // Large-patch noise decides the base surface type.
+                // Steepness nudges: steep → rock, flat → plant
+                float typeNoise = SurfaceTypeNoise(dir);
+                float adjusted = typeNoise
+                    + (1f - steepness) * 0.15f   // flat nudges toward plant (higher)
+                    - steepness * 0.20f;          // steep nudges toward rock (lower)
 
-                float roll = QuickHash(worldPos * 1.7f);
-                if (roll < plantChance * 0.8f) return BlockType.Plant;
-                if (roll > 1f - rockChance * 0.7f) return BlockType.Rock;
+                if (adjusted > 0.42f) return BlockType.Plant;
+                if (adjusted < 0.30f) return BlockType.Rock;
                 return BlockType.Dirt;
             }
 
-            // --- Near surface (cliff face / just below surface) ---
+            // --- Near surface (just below the surface skin) ---
             if (depth < 4f)
             {
                 // Ice near peaks even on cliff faces
                 if (terrainDisp > radius * 0.10f && n > 0.5f)
                     return BlockType.Ice;
 
-                // Steep = mostly rock, moderate = mix, gentle = dirt
-                if (steepness > 0.5f) return BlockType.Rock;
-                if (steepness > 0.25f)
-                    return n > 0.4f ? BlockType.Rock : BlockType.Dirt;
+                // Below plant → typically dirt
+                // Below rock → typically rock
+                // Use the same surface noise so the subsurface matches the surface
+                float typeNoise = SurfaceTypeNoise(dir);
+                float adjusted = typeNoise - steepness * 0.15f;
+
+                if (adjusted < 0.30f) return BlockType.Rock;
                 return BlockType.Dirt;
             }
 
