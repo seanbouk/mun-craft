@@ -38,11 +38,15 @@ namespace MunCraft.UI
         GUIStyle _closeStyle;
         GUIStyle _titleStyle;
 
-        // Public state for MachinesMenuUI to read
+        // Public state for MachinesMenuUI / GameMenuUI to read
         public bool IsRightOpen => _rightOpen;
         public float RightSlide => _rightSlide;
         public Rect RightPanelRect { get; private set; }
         public Rect RightContentRect { get; private set; }
+
+        public bool IsLeftOpen => _leftOpen;
+        public float LeftSlide => _leftSlide;
+        public Rect LeftPanelRect { get; private set; }
 
         public static SideMenuManager Instance { get; private set; }
 
@@ -106,6 +110,7 @@ namespace MunCraft.UI
         void OpenLeft() { _leftOpen = true; _rightOpen = false; }
         void OpenRight() { _rightOpen = true; _leftOpen = false; }
         public void CloseAll() { _leftOpen = false; _rightOpen = false; }
+        public void CloseLeft() { _leftOpen = false; }
         public void CloseRight() { _rightOpen = false; }
 
         void EnsureStyles()
@@ -156,11 +161,19 @@ namespace MunCraft.UI
         {
             if (_leftOpen || _rightOpen) return;
 
-            float hintW = 48, hintH = 48, margin = 12;
+            float hintH = 48, margin = 12;
 
-            var leftRect = new Rect(margin, 90, hintW, hintH);
+            float lHintW = 100;
+            var leftRect = new Rect(margin, 90, lHintW, hintH);
             DrawSolidRect(leftRect, HintBackground);
             GUI.Label(leftRect, "Q \u25C1", _hintStyle);
+            var lLabelRect = new Rect(margin, leftRect.yMax + 2, lHintW, 14);
+            var lSmallStyle = new GUIStyle(GUI.skin.label)
+            {
+                alignment = TextAnchor.MiddleCenter, fontSize = 9,
+            };
+            lSmallStyle.normal.textColor = new Color(0.7f, 0.8f, 0.9f, 0.6f);
+            GUI.Label(lLabelRect, "GAME", lSmallStyle);
 
             // Right hint shows "Machines"
             float rHintW = 100;
@@ -178,6 +191,10 @@ namespace MunCraft.UI
             GUI.Label(labelRect, "MACHINES", smallStyle);
         }
 
+        /// <summary>
+        /// Computes the left panel rect but draws NOTHING.
+        /// GameMenuUI handles all rendering for the left panel.
+        /// </summary>
         void DrawLeftPanel(float slide)
         {
             float panelW = Screen.width * PanelWidthFraction;
@@ -185,25 +202,7 @@ namespace MunCraft.UI
             float panelY = PanelTopMargin;
             float panelX = Mathf.Lerp(-panelW, 0, slide);
 
-            var panelRect = new Rect(panelX, panelY, panelW, panelH);
-            DrawSolidRect(panelRect, PanelBackground);
-
-            float headerH = 48;
-            GUI.Label(new Rect(panelX, panelY, panelW, headerH), "Menu", _titleStyle);
-
-            float closeSize = 36;
-            var closeRect = new Rect(panelX + panelW - closeSize - 8, panelY + 6, closeSize, closeSize);
-            if (closeRect.Contains(Event.current.mousePosition))
-                DrawSolidRect(closeRect, new Color(1f, 1f, 1f, 0.1f));
-            GUI.Label(closeRect, "\u2715", _closeStyle);
-
-            if (Event.current.type == EventType.MouseDown
-                && Event.current.button == 0
-                && closeRect.Contains(Event.current.mousePosition))
-            {
-                CloseAll();
-                Event.current.Use();
-            }
+            LeftPanelRect = new Rect(panelX, panelY, panelW, panelH);
         }
 
         /// <summary>

@@ -136,6 +136,38 @@ namespace MunCraft.Crafting
             OnChanged?.Invoke();
         }
 
+        // ---- Achievements ----
+
+        readonly HashSet<string> _achievements = new();
+
+        public bool HasAchievement(string name) => _achievements.Contains(name);
+
+        public void EarnAchievement(string name)
+        {
+            _achievements.Add(name);
+            OnChanged?.Invoke();
+        }
+
+        public int GetAchievementCount(Machine machine)
+        {
+            int count = 0;
+            for (int i = 0; i < RecipeDatabase.AllRecipes.Length; i++)
+            {
+                var r = RecipeDatabase.AllRecipes[i];
+                if (r.Machine == machine && r.OutputType == RecipeOutputType.Achievement
+                    && _achievements.Contains(r.AchievementName))
+                    count++;
+            }
+            return count;
+        }
+
+        public int TotalAchievements => _achievements.Count;
+
+        /// <summary>
+        /// All earned achievement names, for display.
+        /// </summary>
+        public IEnumerable<string> EarnedAchievements => _achievements;
+
         // ---- Crafted material counts ----
 
         public int GetCraftedCount(CraftingItem item)
@@ -160,6 +192,7 @@ namespace MunCraft.Crafting
             _mokaProgress = 0;
             _tools.Clear();
             _craftedCounts.Clear();
+            _achievements.Clear();
             OnChanged?.Invoke();
         }
     }

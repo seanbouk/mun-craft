@@ -105,11 +105,12 @@ namespace MunCraft.Debug
             // Set up debug UI
             SetupDebugUI();
 
-            // Side menus (Q / E) + Machines UI in the right panel
+            // Side menus (Q / E) + panel UIs
             var menuObj = new GameObject("SideMenus");
             menuObj.AddComponent<SideMenuManager>();
             var machinesUI = menuObj.AddComponent<MachinesMenuUI>();
             machinesUI.Inventory = _inventory;
+            menuObj.AddComponent<GameMenuUI>();
         }
 
         void Update()

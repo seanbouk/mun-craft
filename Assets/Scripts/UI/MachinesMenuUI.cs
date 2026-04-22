@@ -356,6 +356,11 @@ namespace MunCraft.UI
                 case RecipeOutputType.Partial:
                     state.AddMokaProgress();
                     break;
+
+                case RecipeOutputType.Achievement:
+                    if (!state.HasAchievement(recipe.AchievementName))
+                        state.EarnAchievement(recipe.AchievementName);
+                    break;
             }
 
             _pickingMachine = null;
@@ -378,7 +383,8 @@ namespace MunCraft.UI
             {
                 if (recipes[r].Machine != machine) continue;
                 if (recipes[r].OutputType == RecipeOutputType.Unlock
-                    || recipes[r].OutputType == RecipeOutputType.Partial) continue;
+                    || recipes[r].OutputType == RecipeOutputType.Partial
+                    || recipes[r].OutputType == RecipeOutputType.Achievement) continue;
 
                 var item = recipes[r].Produces;
                 bool owned = Inventory.Has(item) || state.HasTool(item);
@@ -417,9 +423,35 @@ namespace MunCraft.UI
                 GUILayout.Space(4);
             }
 
+            // Badges card (achievements for this machine)
+            int earned = state.GetAchievementCount(machine);
+            int total = RecipeDatabase.AchievementTotal(machine);
+            if (earned > 0 && total > 0)
+            {
+                any = true;
+                float cardW = 56, cardH = 50;
+                var cardRect = GUILayoutUtility.GetRect(cardW, cardH,
+                    GUILayout.Width(cardW), GUILayout.Height(cardH));
+
+                Solid(cardRect, new Color(Accent.r, Accent.g, Accent.b, 0.2f));
+                var innerCard = new Rect(cardRect.x + 1, cardRect.y + 1,
+                    cardRect.width - 2, cardRect.height - 2);
+                Solid(innerCard, new Color(Bg.r, Bg.g, Bg.b, 0.8f));
+
+                var badgeLabel = new GUIStyle(GUI.skin.label)
+                    { fontSize = 9, alignment = TextAnchor.MiddleCenter };
+                badgeLabel.normal.textColor = Accent;
+                var topRect = new Rect(innerCard.x, innerCard.y + 4, innerCard.width, 20);
+                GUI.Label(topRect, "Badges", badgeLabel);
+                var countRect = new Rect(innerCard.x, innerCard.y + 24, innerCard.width, 20);
+                badgeLabel.fontSize = 12;
+                badgeLabel.fontStyle = FontStyle.Bold;
+                GUI.Label(countRect, $"{earned}/{total}", badgeLabel);
+            }
+
             if (!any)
             {
-                GUILayout.Label("", GUILayout.Height(1)); // placeholder
+                GUILayout.Label("", GUILayout.Height(1));
             }
 
             GUILayout.EndHorizontal();
