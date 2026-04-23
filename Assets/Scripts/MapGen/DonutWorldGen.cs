@@ -6,7 +6,8 @@ namespace MunCraft.MapGen
 {
     /// <summary>
     /// Map 1: Donut World. A torus (ring) shape.
-    /// Single material (Rock), no terrain features.
+    /// Mostly dirt. Copper "icing" on top dripping down the edges.
+    /// Grass sprinkles on the copper. Pink sky.
     /// </summary>
     public static class DonutWorldGen
     {
@@ -25,21 +26,59 @@ namespace MunCraft.MapGen
                 var address = new BlockAddress(parity, x, y, z);
                 Vector3 pos = address.ToWorldPosition(blockSize);
 
-                // Torus equation: (sqrt(x² + z²) - R)² + y² <= r²
+                // Torus SDF: distance from the tube surface
                 float distXZ = Mathf.Sqrt(pos.x * pos.x + pos.z * pos.z);
-                float d = (distXZ - majorRadius);
-                float torusDist = d * d + pos.y * pos.y;
+                float dx = distXZ - majorRadius;
+                float torusDistSqr = dx * dx + pos.y * pos.y;
 
-                if (torusDist <= tubeSqr)
+                if (torusDistSqr > tubeSqr) continue;
+
+                float torusDist = Mathf.Sqrt(torusDistSqr);
+
+                // Tube angle: PI/2 = top, -PI/2 = bottom, 0 = outer edge
+                float tubeAngle = Mathf.Atan2(pos.y, dx);
+                float topness = Mathf.Sin(tubeAngle);
+
+                // Icing extends the torus surface outward on top — blocks that are
+                // OUTSIDE the base torus but within the icing shell are added as copper.
+                float depth = tubeRadius - torusDist; // negative = outside base torus
+
+                float icingBase = 0.3f;
+                float drip = NoiseUtil.FBM(pos.x * 0.8f + 50f, pos.y * 0.8f + 50f,
+                                            pos.z * 0.8f + 50f, 2) * 0.5f;
+                float icingThreshold = icingBase - drip;
+                bool inIcingZone = topness > icingThreshold;
+
+                // Icing shell: up to 1.5 blocks above the base surface
+                float icingHeight = 1.5f;
+                bool inIcingShell = inIcingZone && depth > -icingHeight && depth < 1.5f;
+
+                if (depth < 0 && !inIcingShell) continue; // outside both base and icing
+
+                BlockType type;
+                if (inIcingShell && depth <= 0)
                 {
-                    chunkManager.SetBlockSilent(address, BlockType.Rock);
-                    filled.Add(address);
+                    // Built-up icing layer (above the base torus surface)
+                    float sprinkle = NoiseUtil.QuickHash(pos * 2.3f);
+                    type = sprinkle > 0.94f ? BlockType.Plant : BlockType.Copper;
                 }
+                else if (inIcingZone && depth < 1.0f && depth >= 0)
+                {
+                    // Painted icing on the base surface (thin coat)
+                    float sprinkle = NoiseUtil.QuickHash(pos * 2.3f);
+                    type = sprinkle > 0.94f ? BlockType.Plant : BlockType.Copper;
+                }
+                else
+                {
+                    type = BlockType.Dirt;
+                }
+
+                chunkManager.SetBlockSilent(address, type);
+                filled.Add(address);
             }
 
             chunkManager.MarkAllDirty();
 
-            // Spawn on top of the tube at (R, tubeR, 0)
             float spawnHeight = tubeRadius + 0.559f * blockSize + 1.4f;
             return new MapResult
             {
@@ -48,5 +87,6 @@ namespace MunCraft.MapGen
                 SpawnUp = Vector3.up,
             };
         }
+
     }
 }

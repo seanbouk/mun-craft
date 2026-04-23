@@ -255,6 +255,10 @@ namespace MunCraft.Debug
                     bottom = new Color(0.35f, 0.55f, 0.75f);
                     top = new Color(0.01f, 0.01f, 0.06f);
                     break;
+                case 1: // Donut World — pink, pale bottom to bright top
+                    bottom = new Color(0.90f, 0.80f, 0.82f);
+                    top = new Color(0.85f, 0.25f, 0.45f);
+                    break;
                 case 2: // Peanut World — dark purple
                     bottom = new Color(0.15f, 0.08f, 0.25f);
                     top = new Color(0.03f, 0.01f, 0.06f);
