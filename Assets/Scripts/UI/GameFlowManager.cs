@@ -15,18 +15,25 @@ namespace MunCraft.UI
         static readonly Color Bg = new Color(0.043f, 0.118f, 0.173f, 1f);
         static readonly Color Ink = new Color(0.92f, 0.96f, 1f, 1f);
         static readonly Color InkDim = new Color(0.65f, 0.75f, 0.85f, 1f);
+        static readonly Color InkFaint = new Color(0.45f, 0.55f, 0.65f, 1f);
         static readonly Color Accent = new Color(1f, 0.81f, 0.29f, 1f);
         static readonly Color BtnBg = new Color(0.06f, 0.16f, 0.24f, 1f);
         static readonly Color BtnHover = new Color(0.08f, 0.22f, 0.32f, 1f);
+        static readonly Color BtnDisabled = new Color(0.04f, 0.10f, 0.16f, 1f);
 
         Texture2D _pixel;
+        Camera _uiCamera; // fallback camera for title/level-select screens
         GUIStyle _titleStyle;
         GUIStyle _subtitleStyle;
         GUIStyle _promptStyle;
         GUIStyle _btnStyle;
         GUIStyle _backStyle;
         GUIStyle _mapLabelStyle;
+        GUIStyle _loadingStyle;
         float _promptPulse;
+        float _inputCooldown; // suppress input briefly after state transitions
+        int _loadingMapId = -1; // -1 = not loading, >=0 = loading that map
+        int _loadingFrames;     // count down frames before actually loading
 
         public static GameFlowManager Instance { get; private set; }
 
@@ -38,6 +45,9 @@ namespace MunCraft.UI
             _pixel.SetPixel(0, 0, Color.white);
             _pixel.Apply();
 
+            // Create a simple camera for title/level-select (destroyed when game loads)
+            CreateUICamera();
+
             GameState.CurrentFlow = FlowState.Title;
             Time.timeScale = 1f;
             Cursor.lockState = CursorLockMode.None;
@@ -48,11 +58,52 @@ namespace MunCraft.UI
         {
             if (Instance == this) Instance = null;
             if (_pixel != null) Destroy(_pixel);
+            DestroyUICamera();
+        }
+
+        void CreateUICamera()
+        {
+            if (_uiCamera != null) return;
+            var camObj = new GameObject("UICamera");
+            _uiCamera = camObj.AddComponent<Camera>();
+            _uiCamera.clearFlags = CameraClearFlags.SolidColor;
+            _uiCamera.backgroundColor = new Color(0.043f, 0.118f, 0.173f);
+            _uiCamera.cullingMask = 0; // render nothing — IMGUI draws on top
+            _uiCamera.depth = -100;
+        }
+
+        void DestroyUICamera()
+        {
+            if (_uiCamera != null)
+            {
+                Destroy(_uiCamera.gameObject);
+                _uiCamera = null;
+            }
         }
 
         void Update()
         {
             _promptPulse += Time.unscaledDeltaTime * 2f;
+
+            if (_inputCooldown > 0)
+            {
+                _inputCooldown -= Time.unscaledDeltaTime;
+                return;
+            }
+
+            // Deferred map loading — wait a few frames so the "Loading..." text
+            // actually reaches the screen before the synchronous generation blocks
+            if (_loadingMapId >= 0)
+            {
+                _loadingFrames--;
+                if (_loadingFrames <= 0)
+                {
+                    int id = _loadingMapId;
+                    _loadingMapId = -1;
+                    LaunchMapDeferred(id);
+                }
+                return;
+            }
 
             if (GameState.CurrentFlow == FlowState.Title)
             {
@@ -62,6 +113,7 @@ namespace MunCraft.UI
                     (mouse != null && mouse.leftButton.wasPressedThisFrame))
                 {
                     GameState.CurrentFlow = FlowState.LevelSelect;
+                    _inputCooldown = 0.2f;
                 }
             }
         }
@@ -108,6 +160,13 @@ namespace MunCraft.UI
                 fontSize = 12, alignment = TextAnchor.MiddleCenter,
             };
             _mapLabelStyle.normal.textColor = InkDim;
+
+            _loadingStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 16, fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+            };
+            _loadingStyle.normal.textColor = Accent;
         }
 
         void OnGUI()
@@ -127,7 +186,6 @@ namespace MunCraft.UI
 
         void DrawTitle()
         {
-            float cx = Screen.width / 2f;
             float cy = Screen.height / 2f;
 
             // mün
@@ -147,21 +205,26 @@ namespace MunCraft.UI
 
         void DrawLevelSelect()
         {
+            bool isLoading = _loadingMapId >= 0;
             float cx = Screen.width / 2f;
 
             // Back button (top-left)
-            var backRect = new Rect(30, 30, 100, 36);
-            bool backHover = backRect.Contains(Event.current.mousePosition);
-            if (backHover)
-                Solid(backRect, new Color(1, 1, 1, 0.06f));
-            _backStyle.normal.textColor = backHover ? Ink : InkDim;
-            GUI.Label(backRect, "\u25C1 Back", _backStyle);
-            if (Event.current.type == EventType.MouseDown
-                && Event.current.button == 0
-                && backRect.Contains(Event.current.mousePosition))
+            if (!isLoading)
             {
-                GameState.CurrentFlow = FlowState.Title;
-                Event.current.Use();
+                var backRect = new Rect(30, 30, 100, 36);
+                bool backHover = backRect.Contains(Event.current.mousePosition);
+                if (backHover)
+                    Solid(backRect, new Color(1, 1, 1, 0.06f));
+                _backStyle.normal.textColor = backHover ? Ink : InkDim;
+                GUI.Label(backRect, "\u25C1 Back", _backStyle);
+                if (Event.current.type == EventType.MouseDown
+                    && Event.current.button == 0
+                    && backRect.Contains(Event.current.mousePosition))
+                {
+                    GameState.CurrentFlow = FlowState.Title;
+                    _inputCooldown = 0.3f;
+                    Event.current.Use();
+                }
             }
 
             // Title
@@ -188,12 +251,19 @@ namespace MunCraft.UI
                     float y = startY + row * (btnH + gap);
                     var rect = new Rect(x, y, btnW, btnH);
 
-                    bool hover = rect.Contains(Event.current.mousePosition);
-                    Solid(rect, hover ? BtnHover : BtnBg);
+                    bool isSelected = isLoading && _loadingMapId == idx;
+                    bool isDisabled = isLoading && _loadingMapId != idx;
+                    bool hover = !isLoading && rect.Contains(Event.current.mousePosition);
+
+                    // Background
+                    Color bg = isDisabled ? BtnDisabled : (hover ? BtnHover : BtnBg);
+                    Solid(rect, bg);
 
                     // Border
                     float b = 2;
-                    Color borderCol = hover ? Accent : new Color(Ink.r, Ink.g, Ink.b, 0.25f);
+                    Color borderCol = isSelected ? Accent
+                        : (isDisabled ? InkFaint
+                        : (hover ? Accent : new Color(Ink.r, Ink.g, Ink.b, 0.25f)));
                     Solid(new Rect(x, y, btnW, b), borderCol);
                     Solid(new Rect(x, y + btnH - b, btnW, b), borderCol);
                     Solid(new Rect(x, y, b, btnH), borderCol);
@@ -201,28 +271,42 @@ namespace MunCraft.UI
 
                     // Map name
                     var nameRect = new Rect(x, y + btnH / 2 - 16, btnW, 32);
-                    _btnStyle.normal.textColor = hover ? Accent : Ink;
+                    _btnStyle.normal.textColor = isDisabled ? InkFaint
+                        : (isSelected ? Accent : (hover ? Accent : Ink));
                     GUI.Label(nameRect, mapNames[idx], _btnStyle);
 
-                    // Subtitle
+                    // Subtitle or loading text
                     var subRect = new Rect(x, y + btnH / 2 + 16, btnW, 20);
-                    _mapLabelStyle.normal.textColor = InkDim;
-                    GUI.Label(subRect, $"Map {idx + 1}", _mapLabelStyle);
+                    if (isSelected)
+                    {
+                        _loadingStyle.fontSize = 12;
+                        GUI.Label(subRect, "Loading...", _loadingStyle);
+                        _loadingStyle.fontSize = 16;
+                    }
+                    else
+                    {
+                        _mapLabelStyle.normal.textColor = isDisabled ? InkFaint : InkDim;
+                        GUI.Label(subRect, $"Map {idx + 1}", _mapLabelStyle);
+                    }
 
-                    // Click
-                    if (Event.current.type == EventType.MouseDown
+                    // Click (only if not loading)
+                    if (!isLoading
+                        && Event.current.type == EventType.MouseDown
                         && Event.current.button == 0
                         && rect.Contains(Event.current.mousePosition))
                     {
-                        LaunchMap(idx);
+                        _loadingMapId = idx;
+                        _loadingFrames = 3; // give 3 frames for the "Loading..." to render
                         Event.current.Use();
                     }
                 }
             }
         }
 
-        void LaunchMap(int mapId)
+        void LaunchMapDeferred(int mapId)
         {
+            DestroyUICamera();
+
             GameState.CurrentFlow = FlowState.Playing;
             var bootstrap = MunCraft.Debug.GameBootstrap.Instance;
             if (bootstrap != null)
@@ -235,8 +319,11 @@ namespace MunCraft.UI
             if (bootstrap != null)
                 bootstrap.UnloadMap();
 
+            CreateUICamera();
+
             GameState.CurrentFlow = FlowState.LevelSelect;
             GameState.MenuOpen = false;
+            _inputCooldown = 0.3f;
             Time.timeScale = 1f;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
