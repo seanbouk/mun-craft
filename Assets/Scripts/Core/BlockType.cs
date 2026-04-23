@@ -19,10 +19,10 @@ namespace MunCraft.Core
         static readonly Color[] Colors =
         {
             new Color(0, 0, 0, 0),           // Air
-            new Color(0.50f, 0.50f, 0.50f),   // Rock — grey
+            new Color(0.33f, 0.33f, 0.33f),   // Rock — dark grey
             new Color(0.54f, 0.36f, 0.22f),   // Dirt — brown
             new Color(0.30f, 0.65f, 0.25f),   // Plant — green
-            new Color(0.78f, 0.88f, 0.95f),   // Ice — pale blue-white
+            new Color(0.82f, 0.90f, 0.98f),   // Ice — pale icy blue
             new Color(0.70f, 0.45f, 0.35f),   // Hematite — rusty red-brown
             new Color(0.80f, 0.55f, 0.25f),   // Copper — orange-copper
             new Color(0.45f, 0.40f, 0.38f),   // Cassiterite — dark grey-brown
