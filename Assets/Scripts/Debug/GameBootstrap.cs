@@ -196,7 +196,7 @@ namespace MunCraft.Debug
                 case 0: return RoundWorldGen.Generate(_chunkManager, BlockSize, SphereRadius);
                 case 1: return DonutWorldGen.Generate(_chunkManager, BlockSize);
                 case 2: return PeanutWorldGen.Generate(_chunkManager, BlockSize);
-                case 3: return HollowWorldGen.Generate(_chunkManager, BlockSize);
+                case 3: return WorldsWorldGen.Generate(_chunkManager, BlockSize);
                 default: return RoundWorldGen.Generate(_chunkManager, BlockSize, SphereRadius);
             }
         }

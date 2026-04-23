@@ -11,7 +11,7 @@ namespace MunCraft.MapGen
     public static class DonutWorldGen
     {
         public static MapResult Generate(ChunkManager chunkManager, float blockSize,
-                                          float majorRadius = 12f, float tubeRadius = 5f)
+                                          float majorRadius = 14.4f, float tubeRadius = 7f)
         {
             var filled = new List<BlockAddress>();
             float tubeSqr = tubeRadius * tubeRadius;

@@ -240,7 +240,7 @@ namespace MunCraft.UI
             float startX = cx - gridW / 2;
             float startY = (Screen.height - gridH) / 2 + 20;
 
-            string[] mapNames = { "Round World", "Donut World", "Peanut World", "Hollow World" };
+            string[] mapNames = { "Round World", "Donut World", "Peanut World", "Worlds World" };
 
             for (int row = 0; row < 2; row++)
             {
@@ -286,7 +286,7 @@ namespace MunCraft.UI
                     else
                     {
                         _mapLabelStyle.normal.textColor = isDisabled ? InkFaint : InkDim;
-                        string[] subLabels = { "Classic sphere", "Walk the ring", "Twin lobes", "Inside out" };
+                        string[] subLabels = { "Classic sphere", "Walk the ring", "Twin lobes", "Jump between" };
                         GUI.Label(subRect, subLabels[idx], _mapLabelStyle);
                     }
 
