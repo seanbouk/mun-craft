@@ -4,6 +4,7 @@ using MunCraft.Crafting;
 using MunCraft.Gravity;
 using MunCraft.Interaction;
 using MunCraft.InventorySystem;
+using MunCraft.MapGen;
 using MunCraft.Meshing;
 using MunCraft.Player;
 using MunCraft.UI;
@@ -45,6 +46,9 @@ namespace MunCraft.Debug
         GameObject _menuObj;
         GameObject _debugObj;
         GameObject _inventoryObj;
+
+        int _currentMapId;
+        MapResult _spawnResult;
 
         // Reused buffer for OnBlockChanged
         readonly HashSet<Vector3Int> _dirtyChunkScratch = new();
@@ -104,9 +108,11 @@ namespace MunCraft.Debug
             // Chunks root
             _chunksRoot = new GameObject("Chunks");
 
-            // Generate sphere (mapId ignored for now — all maps are the same)
-            var filledBlocks = SphereGenerator.Generate(_chunkManager, SphereRadius, BlockSize);
-            _gravityField.Initialize(_chunkManager, filledBlocks);
+            // Generate world based on map selection
+            _currentMapId = mapId;
+            var result = GenerateMap(mapId);
+            _spawnResult = result;
+            _gravityField.Initialize(_chunkManager, result.FilledBlocks);
 
             // Block change listener
             _chunkManager.OnBlockChanged += OnBlockChanged;
@@ -183,14 +189,23 @@ namespace MunCraft.Debug
         //  Internal helpers (same as before)
         // ==============================================================
 
+        MapResult GenerateMap(int mapId)
+        {
+            switch (mapId)
+            {
+                case 0: return RoundWorldGen.Generate(_chunkManager, BlockSize, SphereRadius);
+                case 1: return DonutWorldGen.Generate(_chunkManager, BlockSize);
+                case 2: return PeanutWorldGen.Generate(_chunkManager, BlockSize);
+                case 3: return HollowWorldGen.Generate(_chunkManager, BlockSize);
+                default: return RoundWorldGen.Generate(_chunkManager, BlockSize, SphereRadius);
+            }
+        }
+
         void SpawnPlayer()
         {
             _playerObj = new GameObject("Player");
 
-            float terrainDisplacement = SphereGenerator.TerrainHeight(
-                Vector3.up, SphereRadius * BlockSize, SphereGenerator.Settings.Default);
-            float surfaceHeight = SphereRadius * BlockSize + terrainDisplacement + 0.559f * BlockSize;
-            Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight * 0.5f + 0.5f);
+            Vector3 spawnPos = _spawnResult.SpawnPosition;
             _playerObj.transform.position = spawnPos;
 
             var collision = _playerObj.AddComponent<PlayerCollision>();
@@ -227,7 +242,7 @@ namespace MunCraft.Debug
             var miner = _playerObj.AddComponent<BlockMiner>();
             miner.Initialize(_chunkManager, cam, _inventory);
 
-            controller.Teleport(spawnPos, Vector3.up);
+            controller.Teleport(spawnPos, _spawnResult.SpawnUp);
         }
 
         void SetupDebugUI()
@@ -267,15 +282,12 @@ namespace MunCraft.Debug
             if (_chunksRoot != null) Destroy(_chunksRoot);
             _chunksRoot = new GameObject("Chunks");
 
-            var filledBlocks = SphereGenerator.Generate(_chunkManager, SphereRadius, BlockSize);
-            _gravityField.Initialize(_chunkManager, filledBlocks);
+            var result = GenerateMap(_currentMapId);
+            _spawnResult = result;
+            _gravityField.Initialize(_chunkManager, result.FilledBlocks);
 
-            float terrainDisplacement = SphereGenerator.TerrainHeight(
-                Vector3.up, SphereRadius * BlockSize, SphereGenerator.Settings.Default);
-            float surfaceHeight = SphereRadius * BlockSize + terrainDisplacement + 0.559f * BlockSize;
-            Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight * 0.5f + 0.5f);
             var controller = _playerObj.GetComponent<PlayerController>();
-            controller.Teleport(spawnPos, Vector3.up);
+            controller.Teleport(result.SpawnPosition, result.SpawnUp);
 
             if (_streamingManager != null)
             {
