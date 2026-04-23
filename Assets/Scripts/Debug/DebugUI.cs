@@ -92,6 +92,8 @@ namespace MunCraft.Debug
 
         void OnGUI()
         {
+            if (GameState.CurrentFlow != FlowState.Playing) return;
+
             // Always show FPS in corner
             GUI.Label(new Rect(10, 10, 200, 20), $"FPS: {_fps:F0}");
 

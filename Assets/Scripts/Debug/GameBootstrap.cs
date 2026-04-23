@@ -12,9 +12,9 @@ using UnityEngine;
 namespace MunCraft.Debug
 {
     /// <summary>
-    /// Wires up the entire scene on Start: generates the sphere, creates chunk renderers,
-    /// initializes gravity, spawns the player.
-    /// Attach to a root GameObject in the scene.
+    /// Wires up the game world. Start() just creates the flow manager;
+    /// actual world generation is deferred to LoadMap() which the flow
+    /// manager calls when a map is selected.
     /// </summary>
     public class GameBootstrap : MonoBehaviour
     {
@@ -42,15 +42,21 @@ namespace MunCraft.Debug
         GameObject _playerObj;
         GameObject _chunksRoot;
         Material _blockMaterial;
+        GameObject _menuObj;
+        GameObject _debugObj;
+        GameObject _inventoryObj;
 
         // Reused buffer for OnBlockChanged
-        readonly HashSet<Vector3Int> _dirtyChunkScratch = new HashSet<Vector3Int>();
+        readonly HashSet<Vector3Int> _dirtyChunkScratch = new();
 
         public ChunkManager ChunkManager => _chunkManager;
+        public static GameBootstrap Instance { get; private set; }
+
+        void Awake() { Instance = this; }
 
         void Start()
         {
-            // Create shared material
+            // Create shared material (needed before any map load)
             var shader = Shader.Find("MunCraft/FlatBlock");
             if (shader == null)
             {
@@ -59,12 +65,37 @@ namespace MunCraft.Debug
             }
             _blockMaterial = new Material(shader);
 
-            // Create ChunkManager
+            // Create the flow manager — it shows the title screen
+            // and calls LoadMap() when the player picks a level
+            var flowObj = new GameObject("GameFlow");
+            flowObj.AddComponent<GameFlowManager>();
+        }
+
+        void Update()
+        {
+            if (_playerObj != null)
+                Shader.SetGlobalVector("_MunPlayerPos", _playerObj.transform.position);
+        }
+
+        void OnDestroy()
+        {
+            if (Instance == this) Instance = null;
+            if (_chunkManager != null)
+                _chunkManager.OnBlockChanged -= OnBlockChanged;
+        }
+
+        // ==============================================================
+        //  LoadMap / UnloadMap — called by GameFlowManager
+        // ==============================================================
+
+        public void LoadMap(int mapId)
+        {
+            // ChunkManager
             var chunkManagerObj = new GameObject("ChunkManager");
             _chunkManager = chunkManagerObj.AddComponent<ChunkManager>();
             _chunkManager.BlockSize = BlockSize;
 
-            // Create GravityField
+            // GravityField
             var gravityObj = new GameObject("GravityField");
             _gravityField = gravityObj.AddComponent<GravityField>();
             _gravityField.GravityConstant = GravityConstant;
@@ -73,28 +104,24 @@ namespace MunCraft.Debug
             // Chunks root
             _chunksRoot = new GameObject("Chunks");
 
-            // Generate sphere
+            // Generate sphere (mapId ignored for now — all maps are the same)
             var filledBlocks = SphereGenerator.Generate(_chunkManager, SphereRadius, BlockSize);
-
-            // Initialize gravity
             _gravityField.Initialize(_chunkManager, filledBlocks);
 
-            // Listen for block changes to handle remeshing of neighbor chunks
+            // Block change listener
             _chunkManager.OnBlockChanged += OnBlockChanged;
 
-            // Inventory + its on-screen bar
-            var inventoryObj = new GameObject("Inventory");
-            _inventory = inventoryObj.AddComponent<Inventory>();
-            var inventoryUI = inventoryObj.AddComponent<InventoryUI>();
+            // Inventory + crafting
+            _inventoryObj = new GameObject("Inventory");
+            _inventory = _inventoryObj.AddComponent<Inventory>();
+            var inventoryUI = _inventoryObj.AddComponent<InventoryUI>();
             inventoryUI.Inventory = _inventory;
+            _inventoryObj.AddComponent<CraftingState>();
 
-            // Crafting state (machines, slots, tool unlocks)
-            inventoryObj.AddComponent<CraftingState>();
-
-            // Spawn player (before streaming so we have a player transform)
+            // Player
             SpawnPlayer();
 
-            // Chunk streaming — only creates renderers near the player
+            // Streaming
             var streamObj = new GameObject("ChunkStreaming");
             _streamingManager = streamObj.AddComponent<ChunkStreamingManager>();
             _streamingManager.RenderDistance = RenderDistance;
@@ -102,68 +129,79 @@ namespace MunCraft.Debug
                                          _blockMaterial, _chunksRoot);
             _streamingManager.ForceLoadNearby();
 
-            // Set up debug UI
+            // Debug UI
             SetupDebugUI();
 
-            // Side menus (Q / E) + panel UIs
-            var menuObj = new GameObject("SideMenus");
-            menuObj.AddComponent<SideMenuManager>();
-            var machinesUI = menuObj.AddComponent<MachinesMenuUI>();
+            // Side menus
+            _menuObj = new GameObject("SideMenus");
+            _menuObj.AddComponent<SideMenuManager>();
+            var machinesUI = _menuObj.AddComponent<MachinesMenuUI>();
             machinesUI.Inventory = _inventory;
-            menuObj.AddComponent<GameMenuUI>();
+            _menuObj.AddComponent<GameMenuUI>();
+
+            // Lock cursor for gameplay
+            Cursor.lockState = CursorLockMode.Locked;
+            Cursor.visible = false;
         }
 
-        void Update()
+        public void UnloadMap()
         {
-            // Feed the player position to the shader for distance fog
-            if (_playerObj != null)
-                Shader.SetGlobalVector("_MunPlayerPos", _playerObj.transform.position);
+            if (_chunkManager != null)
+                _chunkManager.OnBlockChanged -= OnBlockChanged;
+
+            // Destroy all game objects
+            SafeDestroy(_menuObj);
+            SafeDestroy(_debugObj);
+            SafeDestroy(_playerObj);
+            SafeDestroy(_chunksRoot);
+            SafeDestroy(_inventoryObj);
+            if (_streamingManager != null) SafeDestroy(_streamingManager.gameObject);
+            if (_chunkManager != null) SafeDestroy(_chunkManager.gameObject);
+            if (_gravityField != null) SafeDestroy(_gravityField.gameObject);
+
+            _menuObj = null;
+            _debugObj = null;
+            _playerObj = null;
+            _chunksRoot = null;
+            _inventoryObj = null;
+            _streamingManager = null;
+            _chunkManager = null;
+            _gravityField = null;
+            _inventory = null;
+
+            ChunkRendererRegistry.Clear();
+            GameState.MenuOpen = false;
+            RenderSettings.skybox = null;
         }
 
-        void CreateChunkRenderers()
+        static void SafeDestroy(GameObject obj)
         {
-            foreach (var kvp in _chunkManager.Chunks)
-            {
-                CreateChunkRenderer(kvp.Key, kvp.Value);
-            }
+            if (obj != null) Destroy(obj);
         }
 
-        void CreateChunkRenderer(Vector3Int coord, Chunk chunk)
-        {
-            if (chunk.IsEmpty()) return;
-
-            var obj = new GameObject($"Chunk({coord.x},{coord.y},{coord.z})");
-            obj.transform.parent = _chunksRoot.transform;
-            obj.AddComponent<MeshFilter>();
-            obj.AddComponent<MeshRenderer>();
-            var renderer = obj.AddComponent<ChunkRenderer>();
-            renderer.Initialize(chunk, _chunkManager, _blockMaterial);
-        }
+        // ==============================================================
+        //  Internal helpers (same as before)
+        // ==============================================================
 
         void SpawnPlayer()
         {
             _playerObj = new GameObject("Player");
 
-            // Position above the actual terrain surface (accounts for hills)
             float terrainDisplacement = SphereGenerator.TerrainHeight(
                 Vector3.up, SphereRadius * BlockSize, SphereGenerator.Settings.Default);
             float surfaceHeight = SphereRadius * BlockSize + terrainDisplacement + 0.559f * BlockSize;
             Vector3 spawnPos = Vector3.up * (surfaceHeight + PlayerHeight * 0.5f + 0.5f);
             _playerObj.transform.position = spawnPos;
 
-            // Player collision — MUST be added before PlayerController,
-            // because PlayerController.Awake() does GetComponent<PlayerCollision>()
             var collision = _playerObj.AddComponent<PlayerCollision>();
             collision.Height = PlayerHeight;
             collision.Radius = PlayerRadius;
             collision.Initialize(_chunkManager);
 
-            // Player controller
             var controller = _playerObj.AddComponent<PlayerController>();
             controller.MoveSpeed = MoveSpeed;
             controller.JumpForce = JumpForce;
 
-            // Camera
             var cameraObj = new GameObject("PlayerCamera");
             cameraObj.transform.parent = _playerObj.transform;
             var cam = cameraObj.AddComponent<Camera>();
@@ -171,10 +209,9 @@ namespace MunCraft.Debug
             cam.farClipPlane = 200f;
             cam.fieldOfView = 75f;
             cam.clearFlags = CameraClearFlags.Skybox;
-            cam.backgroundColor = new Color(0.01f, 0.01f, 0.06f); // fallback if skybox fails
+            cam.backgroundColor = new Color(0.01f, 0.01f, 0.06f);
             cameraObj.AddComponent<PlayerCamera>();
 
-            // Sky — procedural gradient + stars
             var skyShader = Shader.Find("MunCraft/Sky");
             if (skyShader != null)
             {
@@ -182,23 +219,21 @@ namespace MunCraft.Debug
                 RenderSettings.skybox = skyMat;
             }
 
-            // Remove the default camera
+            // Remove the default camera if one exists
             var defaultCam = Camera.main;
             if (defaultCam != null && defaultCam.gameObject != cameraObj)
                 Destroy(defaultCam.gameObject);
 
-            // Block miner
             var miner = _playerObj.AddComponent<BlockMiner>();
             miner.Initialize(_chunkManager, cam, _inventory);
 
-            // Teleport with correct orientation
             controller.Teleport(spawnPos, Vector3.up);
         }
 
         void SetupDebugUI()
         {
-            var debugObj = new GameObject("DebugUI");
-            var debugUI = debugObj.AddComponent<DebugUI>();
+            _debugObj = new GameObject("DebugUI");
+            var debugUI = _debugObj.AddComponent<DebugUI>();
             debugUI.Bootstrap = this;
             debugUI.GravityFieldRef = _gravityField;
             debugUI.Player = _playerObj.GetComponent<PlayerController>();
@@ -207,9 +242,6 @@ namespace MunCraft.Debug
 
         void OnBlockChanged(BlockAddress address, BlockType newType)
         {
-            // Only the changed block's chunk and the chunks containing its 14
-            // BCC neighbors need remeshing — typically 1, sometimes up to ~8
-            // for blocks at chunk corners. (Was 27 with the old 3x3x3 sweep.)
             _dirtyChunkScratch.Clear();
             _dirtyChunkScratch.Add(address.GetChunkCoord(Chunk.Size));
 
@@ -225,28 +257,19 @@ namespace MunCraft.Debug
             }
         }
 
-        public void ResetScene()
-        {
-            RegenerateSphere(SphereRadius);
-        }
+        public void ResetScene() => RegenerateSphere(SphereRadius);
 
         public void RegenerateSphere(int radius)
         {
             SphereRadius = radius;
-
-            // Clear existing world
             _chunkManager.Clear();
 
-            // Destroy chunk renderers
-            if (_chunksRoot != null)
-                Destroy(_chunksRoot);
+            if (_chunksRoot != null) Destroy(_chunksRoot);
             _chunksRoot = new GameObject("Chunks");
 
-            // Regenerate
             var filledBlocks = SphereGenerator.Generate(_chunkManager, SphereRadius, BlockSize);
             _gravityField.Initialize(_chunkManager, filledBlocks);
 
-            // Reset player above actual terrain, then stream nearby chunks
             float terrainDisplacement = SphereGenerator.TerrainHeight(
                 Vector3.up, SphereRadius * BlockSize, SphereGenerator.Settings.Default);
             float surfaceHeight = SphereRadius * BlockSize + terrainDisplacement + 0.559f * BlockSize;
@@ -260,12 +283,6 @@ namespace MunCraft.Debug
                                              _blockMaterial, _chunksRoot);
                 _streamingManager.ForceLoadNearby();
             }
-        }
-
-        void OnDestroy()
-        {
-            if (_chunkManager != null)
-                _chunkManager.OnBlockChanged -= OnBlockChanged;
         }
     }
 }

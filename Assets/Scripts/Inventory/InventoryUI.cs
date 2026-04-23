@@ -89,6 +89,7 @@ namespace MunCraft.InventorySystem
 
         void OnGUI()
         {
+            if (Core.GameState.CurrentFlow != Core.FlowState.Playing) return;
             if (_rawItems == null || _rawItems.Length == 0) return;
             EnsureStyles();
 

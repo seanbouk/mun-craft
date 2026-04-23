@@ -72,6 +72,8 @@ namespace MunCraft.UI
 
         void Update()
         {
+            if (GameState.CurrentFlow != FlowState.Playing) return;
+
             var kb = Keyboard.current;
             if (kb == null) return;
 

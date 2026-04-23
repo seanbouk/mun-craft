@@ -159,6 +159,38 @@ namespace MunCraft.UI
             _scrollPos = GUILayout.BeginScrollView(_scrollPos, false, false,
                 GUIStyle.none, GUIStyle.none, GUIStyle.none);
 
+            // ---- Change Map section ----
+            GUILayout.Label("CHANGE MAP", _headerStyle, GUILayout.Height(22));
+            var cmDiv = GUILayoutUtility.GetRect(0, 1, GUILayout.ExpandWidth(true));
+            Solid(cmDiv, new Color(Ink.r, Ink.g, Ink.b, 0.15f));
+            GUILayout.Space(6);
+
+            var exitRect = GUILayoutUtility.GetRect(0, 32, GUILayout.ExpandWidth(true));
+            bool exitHover = exitRect.Contains(Event.current.mousePosition);
+            Solid(exitRect, exitHover ? new Color(Accent.r, Accent.g, Accent.b, 0.2f)
+                                      : new Color(Ink.r, Ink.g, Ink.b, 0.06f));
+            var exitBtnStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 13, fontStyle = FontStyle.Bold,
+                alignment = TextAnchor.MiddleCenter,
+            };
+            exitBtnStyle.normal.textColor = exitHover ? Accent : Ink;
+            GUI.Label(exitRect, "Exit", exitBtnStyle);
+
+            if (Event.current.type == EventType.MouseDown
+                && Event.current.button == 0
+                && exitRect.Contains(Event.current.mousePosition))
+            {
+                GameFlowManager.Instance?.GoToLevelSelect();
+                Event.current.Use();
+                GUILayout.EndScrollView();
+                GUILayout.EndArea();
+                return;
+            }
+
+            GUILayout.Space(20);
+
+            // ---- Achievements section ----
             // Total count
             int grandTotal = 0;
             int grandEarned = state.TotalAchievements;
