@@ -231,6 +231,7 @@ namespace MunCraft.Debug
             if (skyShader != null)
             {
                 var skyMat = new Material(skyShader);
+                ApplySkyColors(skyMat, _currentMapId);
                 RenderSettings.skybox = skyMat;
             }
 
@@ -243,6 +244,26 @@ namespace MunCraft.Debug
             miner.Initialize(_chunkManager, cam, _inventory);
 
             controller.Teleport(spawnPos, _spawnResult.SpawnUp);
+        }
+
+        static void ApplySkyColors(Material skyMat, int mapId)
+        {
+            Color bottom, top;
+            switch (mapId)
+            {
+                case 0: // Round World — azure/deep blue (shader defaults)
+                    bottom = new Color(0.35f, 0.55f, 0.75f);
+                    top = new Color(0.01f, 0.01f, 0.06f);
+                    break;
+                case 2: // Peanut World — dark purple
+                    bottom = new Color(0.15f, 0.08f, 0.25f);
+                    top = new Color(0.03f, 0.01f, 0.06f);
+                    break;
+                default: // Others — keep shader defaults for now
+                    return;
+            }
+            skyMat.SetColor("_AzureColor", bottom);
+            skyMat.SetColor("_DeepBlueColor", top);
         }
 
         void SetupDebugUI()
