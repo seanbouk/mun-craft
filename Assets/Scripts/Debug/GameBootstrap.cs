@@ -263,9 +263,9 @@ namespace MunCraft.Debug
                     bottom = new Color(0.15f, 0.08f, 0.25f);
                     top = new Color(0.03f, 0.01f, 0.06f);
                     break;
-                case 3: // Worlds World — gold (mustard bottom, chocolate top)
-                    bottom = new Color(0.75f, 0.65f, 0.30f);
-                    top = new Color(0.20f, 0.12f, 0.06f);
+                case 3: // Worlds World — mustard bottom, black top
+                    bottom = new Color(0.50f, 0.42f, 0.15f);
+                    top = new Color(0f, 0f, 0f);
                     break;
                 default:
                     return;
