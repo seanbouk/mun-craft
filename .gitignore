@@ -54,6 +54,9 @@ ExportedObj/
 
 # Unity script reference cache
 /[Rr]efs/
+
+# itch.io build zips
+*.zip
 .consulo/
 *.csproj
 *.unityproj
