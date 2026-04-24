@@ -513,6 +513,7 @@ namespace MunCraft.UI
             foreach (var kvp in Inventory.AllItems)
             {
                 if (kvp.Value <= 0) continue;
+                if (kvp.Key.IsTool()) continue; // tools aren't spendable materials
                 if (itemY + itemH > pickerRect.yMax - 4) break;
 
                 anyItems = true;

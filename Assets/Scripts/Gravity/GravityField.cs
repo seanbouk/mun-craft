@@ -68,7 +68,7 @@ namespace MunCraft.Gravity
 
         void LateUpdate()
         {
-            // Sync parameters (cheap)
+            if (_octree == null) return;
             _octree.Theta = Theta;
             _octree.GravityConstant = GravityConstant;
         }
