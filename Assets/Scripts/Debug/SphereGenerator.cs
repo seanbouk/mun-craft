@@ -267,7 +267,7 @@ namespace MunCraft.Debug
             // --- Mid depth (mostly rock, occasional dirt + ores) ---
             if (depth < 10f)
             {
-                if (n > 0.93f) return BlockType.Hematite;
+                if (n > 0.93f) return BlockType.Cassiterite;
                 if (n > 0.85f) return BlockType.Dirt;
                 return BlockType.Rock;
             }
@@ -276,8 +276,8 @@ namespace MunCraft.Debug
             {
                 float deepN = QuickHash(worldPos * 3f);
                 if (deepN > 0.97f) return BlockType.Copper;
-                if (deepN > 0.93f) return BlockType.Hematite;
-                if (deepN > 0.88f && depth > 15f) return BlockType.Cassiterite;
+                if (deepN > 0.93f) return BlockType.Cassiterite;
+                if (deepN > 0.88f && depth > 15f) return BlockType.Hematite;
                 return BlockType.Rock;
             }
         }
