@@ -136,6 +136,13 @@ namespace MunCraft.Crafting
             OnChanged?.Invoke();
         }
 
+        public void SetMokaProgress(int value)
+        {
+            _mokaProgress = value;
+            if (_mokaProgress >= 4)
+                UnlockMachine(Machine.MokaPot);
+        }
+
         // ---- Achievements ----
 
         readonly HashSet<string> _achievements = new();

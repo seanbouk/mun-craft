@@ -73,8 +73,15 @@ namespace MunCraft.Debug
             _inventoryObj = new GameObject("Inventory");
             _inventory = _inventoryObj.AddComponent<Inventory>();
             _inventoryObj.AddComponent<InventoryUI>().Inventory = _inventory;
-            _inventoryObj.AddComponent<CraftingState>();
+            var craftingState = _inventoryObj.AddComponent<CraftingState>();
             _inventoryObj.SetActive(false);
+
+            // Load saved progress (if any)
+            SaveManager.Load(_inventory, craftingState);
+
+            // Auto-save on every state change
+            _inventory.OnChanged += () => SaveManager.Save(_inventory, craftingState);
+            craftingState.OnChanged += () => SaveManager.Save(_inventory, craftingState);
 
             // Persistent side menus (survives map changes)
             _menuObj = new GameObject("SideMenus");

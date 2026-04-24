@@ -114,6 +114,15 @@ namespace MunCraft.Debug
                     Bootstrap.ResetScene();
             }
 
+            if (GUILayout.Button("Reset All Progress"))
+            {
+                MunCraft.Crafting.SaveManager.DeleteSave();
+                var inv = Object.FindAnyObjectByType<MunCraft.InventorySystem.Inventory>();
+                var cs = MunCraft.Crafting.CraftingState.Instance;
+                if (inv != null) inv.Clear();
+                if (cs != null) cs.Reset();
+            }
+
             GUILayout.Space(10);
 
             // Gravity
