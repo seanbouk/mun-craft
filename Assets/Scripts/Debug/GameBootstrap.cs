@@ -69,6 +69,20 @@ namespace MunCraft.Debug
             }
             _blockMaterial = new Material(shader);
 
+            // Persistent inventory + crafting state (survives map changes)
+            _inventoryObj = new GameObject("Inventory");
+            _inventory = _inventoryObj.AddComponent<Inventory>();
+            _inventoryObj.AddComponent<InventoryUI>().Inventory = _inventory;
+            _inventoryObj.AddComponent<CraftingState>();
+            _inventoryObj.SetActive(false);
+
+            // Persistent side menus (survives map changes)
+            _menuObj = new GameObject("SideMenus");
+            _menuObj.AddComponent<SideMenuManager>();
+            _menuObj.AddComponent<MachinesMenuUI>().Inventory = _inventory;
+            _menuObj.AddComponent<GameMenuUI>();
+            _menuObj.SetActive(false);
+
             // Create the flow manager — it shows the title screen
             // and calls LoadMap() when the player picks a level
             var flowObj = new GameObject("GameFlow");
@@ -117,12 +131,8 @@ namespace MunCraft.Debug
             // Block change listener
             _chunkManager.OnBlockChanged += OnBlockChanged;
 
-            // Inventory + crafting
-            _inventoryObj = new GameObject("Inventory");
-            _inventory = _inventoryObj.AddComponent<Inventory>();
-            var inventoryUI = _inventoryObj.AddComponent<InventoryUI>();
-            inventoryUI.Inventory = _inventory;
-            _inventoryObj.AddComponent<CraftingState>();
+            // Show the persistent inventory/crafting UI
+            _inventoryObj.SetActive(true);
 
             // Player
             SpawnPlayer();
@@ -138,12 +148,11 @@ namespace MunCraft.Debug
             // Debug UI
             SetupDebugUI();
 
-            // Side menus
-            _menuObj = new GameObject("SideMenus");
-            _menuObj.AddComponent<SideMenuManager>();
-            var machinesUI = _menuObj.AddComponent<MachinesMenuUI>();
-            machinesUI.Inventory = _inventory;
-            _menuObj.AddComponent<GameMenuUI>();
+            // Show persistent menus
+            _menuObj.SetActive(true);
+            // Ensure any open panels are closed from previous session
+            var sideMgr = _menuObj.GetComponent<SideMenuManager>();
+            if (sideMgr != null) sideMgr.CloseAll();
 
             // Lock cursor for gameplay
             Cursor.lockState = CursorLockMode.Locked;
@@ -155,21 +164,21 @@ namespace MunCraft.Debug
             if (_chunkManager != null)
                 _chunkManager.OnBlockChanged -= OnBlockChanged;
 
-            // Destroy all game objects
-            SafeDestroy(_menuObj);
+            // Hide persistent UI, destroy map-specific objects
+            if (_menuObj != null) _menuObj.SetActive(false);
             SafeDestroy(_debugObj);
             SafeDestroy(_playerObj);
             SafeDestroy(_chunksRoot);
-            SafeDestroy(_inventoryObj);
             if (_streamingManager != null) SafeDestroy(_streamingManager.gameObject);
             if (_chunkManager != null) SafeDestroy(_chunkManager.gameObject);
             if (_gravityField != null) SafeDestroy(_gravityField.gameObject);
 
-            _menuObj = null;
+            // Hide inventory UI (but keep the data)
+            if (_inventoryObj != null) _inventoryObj.SetActive(false);
+
             _debugObj = null;
             _playerObj = null;
             _chunksRoot = null;
-            _inventoryObj = null;
             _streamingManager = null;
             _chunkManager = null;
             _gravityField = null;
