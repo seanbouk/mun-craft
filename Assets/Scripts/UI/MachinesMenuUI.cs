@@ -266,8 +266,9 @@ namespace MunCraft.UI
                     GUI.Label(inner, "empty", _slotLabelStyle);
                 }
 
-                // Click handling
-                if (Event.current.type == EventType.MouseDown
+                // Click handling (disabled while picker overlay is open)
+                if (!_pickingMachine.HasValue
+                    && Event.current.type == EventType.MouseDown
                     && Event.current.button == 0
                     && slotRect.Contains(Event.current.mousePosition))
                 {
