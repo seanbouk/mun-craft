@@ -152,8 +152,10 @@ namespace MunCraft.Debug
                                          _blockMaterial, _chunksRoot);
             _streamingManager.ForceLoadNearby();
 
-            // Debug UI
+            // Debug UI — editor only (FPS counter + debug menu hidden in builds)
+#if UNITY_EDITOR
             SetupDebugUI();
+#endif
 
             // Show persistent menus
             _menuObj.SetActive(true);
