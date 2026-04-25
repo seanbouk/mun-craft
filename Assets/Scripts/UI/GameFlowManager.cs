@@ -40,6 +40,13 @@ namespace MunCraft.UI
         int _loadingMapId = -1; // -1 = not loading, >=0 = loading that map
         int _loadingFrames;     // count down frames before actually loading
 
+        struct Star { public float X, Y, Brightness; }
+        Star[] _stars;
+        int _starScreenW, _starScreenH;
+        const int StarCount = 140;
+        const float StarBaseSpeed = 28f;   // px/sec for a brightness-1 star
+        const float StarMinBrightness = 0.25f;
+
         public static GameFlowManager Instance { get; private set; }
 
         void Awake() { Instance = this; }
@@ -97,6 +104,9 @@ namespace MunCraft.UI
         void Update()
         {
             _promptPulse += Time.unscaledDeltaTime * 2f;
+
+            if (GameState.CurrentFlow != FlowState.Playing)
+                UpdateStars(Time.unscaledDeltaTime);
 
             if (_inputCooldown > 0)
             {
@@ -190,11 +200,57 @@ namespace MunCraft.UI
 
             // Full-screen background
             Solid(new Rect(0, 0, Screen.width, Screen.height), Bg);
+            DrawStars();
 
             if (GameState.CurrentFlow == FlowState.Title)
                 DrawTitle();
             else if (GameState.CurrentFlow == FlowState.LevelSelect)
                 DrawLevelSelect();
+        }
+
+        void InitStars()
+        {
+            _stars = new Star[StarCount];
+            _starScreenW = Screen.width;
+            _starScreenH = Screen.height;
+            for (int i = 0; i < _stars.Length; i++)
+            {
+                _stars[i].X = Random.Range(0f, _starScreenW);
+                _stars[i].Y = Random.Range(0f, _starScreenH);
+                _stars[i].Brightness = Random.Range(StarMinBrightness, 1f);
+            }
+        }
+
+        void UpdateStars(float dt)
+        {
+            if (_stars == null
+                || _starScreenW != Screen.width
+                || _starScreenH != Screen.height)
+            {
+                InitStars();
+                return;
+            }
+
+            for (int i = 0; i < _stars.Length; i++)
+            {
+                _stars[i].X -= _stars[i].Brightness * StarBaseSpeed * dt;
+                if (_stars[i].X < 0f)
+                {
+                    _stars[i].X = _starScreenW;
+                    _stars[i].Y = Random.Range(0f, _starScreenH);
+                    _stars[i].Brightness = Random.Range(StarMinBrightness, 1f);
+                }
+            }
+        }
+
+        void DrawStars()
+        {
+            if (_stars == null) return;
+            for (int i = 0; i < _stars.Length; i++)
+            {
+                var s = _stars[i];
+                Solid(new Rect(s.X, s.Y, 1f, 1f), new Color(1f, 1f, 1f, s.Brightness));
+            }
         }
 
         void DrawTitle()
