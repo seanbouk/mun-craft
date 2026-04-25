@@ -233,6 +233,8 @@ namespace MunCraft.Debug
             controller.MoveSpeed = MoveSpeed;
             controller.JumpForce = JumpForce;
 
+            _playerObj.AddComponent<MunCraft.Player.Footsteps>();
+
             var cameraObj = new GameObject("PlayerCamera");
             cameraObj.transform.parent = _playerObj.transform;
             var cam = cameraObj.AddComponent<Camera>();

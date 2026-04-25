@@ -42,6 +42,12 @@ namespace MunCraft.Player
         PlayerCollision _collision;
         bool _loggedStartup;
 
+        // Landing-event state. Decoupled from coyote time so brief contact
+        // loss while running over bumpy terrain doesn't fire a landing sound.
+        const float LandingGracePeriod = 0.4f;
+        float _airborneTimer;        // seconds since last real ground contact
+        bool _flaggedAirborne;       // crossed the grace period (or jumped)
+
         // Debug state — read by DebugUI
         [System.NonSerialized] public float _lastH, _lastV, _lastMouseX, _lastMouseY;
         [System.NonSerialized] public bool _lastAnyKey, _lastFocused;
@@ -50,6 +56,9 @@ namespace MunCraft.Player
         public Vector3 CurrentUp => _currentUp;
         public bool IsGrounded => _isGrounded;
         public Vector3 GravityDirection { get; private set; }
+
+        public event System.Action OnJumped;
+        public event System.Action OnLanded;
 
         void Awake()
         {
@@ -145,6 +154,9 @@ namespace MunCraft.Player
                     _velocity += _currentUp * JumpForce;
                     _isGrounded = false;
                     _groundedTimer = 0; // prevent coyote-time double jump
+                    _flaggedAirborne = true; // explicit jump always counts as airborne
+                    _airborneTimer = LandingGracePeriod;
+                    OnJumped?.Invoke();
                 }
 
                 // Do NOT apply gravity when grounded — collision handles it
@@ -162,6 +174,10 @@ namespace MunCraft.Player
             // Clamp velocity
             if (_velocity.sqrMagnitude > MaxVelocity * MaxVelocity)
                 _velocity = _velocity.normalized * MaxVelocity;
+
+            // Capture incoming velocity for the landing-impact check below
+            // (substep collision resolution may zero it out by the end of the frame).
+            Vector3 incomingVelocity = _velocity;
 
             // Substep integration to prevent tunneling
             Vector3 totalMove = _velocity * dt;
@@ -213,6 +229,26 @@ namespace MunCraft.Player
                 _isGrounded = _groundedTimer > 0;
             }
 
+            // Landing event: only fire if we actually spent a meaningful amount
+            // of time airborne (or explicitly jumped). Brief contact loss while
+            // running on uneven terrain doesn't count.
+            if (grounded)
+            {
+                if (_flaggedAirborne)
+                {
+                    float downVel = Vector3.Dot(incomingVelocity, -_currentUp);
+                    if (downVel > 1f) OnLanded?.Invoke();
+                    _flaggedAirborne = false;
+                }
+                _airborneTimer = 0f;
+            }
+            else
+            {
+                _airborneTimer += dt;
+                if (_airborneTimer >= LandingGracePeriod)
+                    _flaggedAirborne = true;
+            }
+
             transform.position = pos;
 
             // Apply orientation
@@ -230,6 +266,8 @@ namespace MunCraft.Player
             _currentUp = up;
             _isGrounded = false;
             _groundedTimer = 0;
+            _airborneTimer = 0f;
+            _flaggedAirborne = false;
         }
     }
 }
