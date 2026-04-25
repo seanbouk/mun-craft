@@ -41,6 +41,7 @@ namespace MunCraft.EditorTools
             // and Shader.Find returns null in the player.
             EnsureShaderAlwaysIncluded("MunCraft/FlatBlock");
             EnsureShaderAlwaysIncluded("MunCraft/Sky");
+            EnsureShaderAlwaysIncluded("MunCraft/TitleFade");
 
             UnityEngine.Debug.Log("[WebGLBuildScript] Player settings configured.");
 

@@ -12,7 +12,7 @@ namespace MunCraft.UI
     public class GameFlowManager : MonoBehaviour
     {
         // Blueprint palette
-        static readonly Color Bg = new Color(0.043f, 0.118f, 0.173f, 1f);
+        static readonly Color Bg = new Color(0f, 0f, 0f, 1f);
         static readonly Color Ink = new Color(0.92f, 0.96f, 1f, 1f);
         static readonly Color InkDim = new Color(0.65f, 0.75f, 0.85f, 1f);
         static readonly Color InkFaint = new Color(0.45f, 0.55f, 0.65f, 1f);
@@ -22,6 +22,11 @@ namespace MunCraft.UI
         static readonly Color BtnDisabled = new Color(0.04f, 0.10f, 0.16f, 1f);
 
         Texture2D _pixel;
+        Texture2D _titleImage;
+        Material _titleFadeMat;
+        float _titleStartTime;
+        const float TitleFadeDuration = 5f;
+        const float TitleMaxDelay = 20f;
         Camera _uiCamera; // fallback camera for title/level-select screens
         GUIStyle _titleStyle;
         GUIStyle _subtitleStyle;
@@ -45,6 +50,13 @@ namespace MunCraft.UI
             _pixel.SetPixel(0, 0, Color.white);
             _pixel.Apply();
 
+            _titleImage = Resources.Load<Texture2D>("Title/title");
+
+            var titleFadeShader = Shader.Find("MunCraft/TitleFade");
+            if (titleFadeShader != null)
+                _titleFadeMat = new Material(titleFadeShader) { hideFlags = HideFlags.HideAndDontSave };
+            _titleStartTime = Time.unscaledTime;
+
             // Create a simple camera for title/level-select (destroyed when game loads)
             CreateUICamera();
 
@@ -58,6 +70,7 @@ namespace MunCraft.UI
         {
             if (Instance == this) Instance = null;
             if (_pixel != null) Destroy(_pixel);
+            if (_titleFadeMat != null) Destroy(_titleFadeMat);
             DestroyUICamera();
         }
 
@@ -67,7 +80,7 @@ namespace MunCraft.UI
             var camObj = new GameObject("UICamera");
             _uiCamera = camObj.AddComponent<Camera>();
             _uiCamera.clearFlags = CameraClearFlags.SolidColor;
-            _uiCamera.backgroundColor = new Color(0.043f, 0.118f, 0.173f);
+            _uiCamera.backgroundColor = Color.black;
             _uiCamera.cullingMask = 0; // render nothing — IMGUI draws on top
             _uiCamera.depth = -100;
         }
@@ -188,6 +201,32 @@ namespace MunCraft.UI
         {
             float cy = Screen.height / 2f;
 
+            if (_titleImage != null)
+            {
+                float targetH = 260f;
+                float aspect = (float)_titleImage.width / _titleImage.height;
+                float targetW = targetH * aspect;
+                float maxW = Screen.width * 0.8f;
+                if (targetW > maxW)
+                {
+                    targetW = maxW;
+                    targetH = targetW / aspect;
+                }
+                var imgRect = new Rect((Screen.width - targetW) / 2f, cy - targetH / 2f, targetW, targetH);
+                if (_titleFadeMat != null && Event.current.type == EventType.Repaint)
+                {
+                    _titleFadeMat.SetFloat("_Elapsed", Time.unscaledTime - _titleStartTime);
+                    _titleFadeMat.SetFloat("_FadeDuration", TitleFadeDuration);
+                    _titleFadeMat.SetFloat("_MaxDelay", TitleMaxDelay);
+                    Graphics.DrawTexture(imgRect, _titleImage, _titleFadeMat);
+                }
+                else if (_titleFadeMat == null)
+                {
+                    GUI.DrawTexture(imgRect, _titleImage, ScaleMode.ScaleToFit);
+                }
+            }
+            else
+            {
             // mün
             var munRect = new Rect(0, cy - 90, Screen.width, 90);
             GUI.Label(munRect, "m\u00FCn", _titleStyle);
@@ -195,11 +234,12 @@ namespace MunCraft.UI
             // CRAFT
             var craftRect = new Rect(0, cy - 10, Screen.width, 100);
             GUI.Label(craftRect, "CRAFT", _subtitleStyle);
+            }
 
             // (press any key) — pulsing opacity
             float alpha = 0.3f + 0.4f * (0.5f + 0.5f * Mathf.Sin(_promptPulse));
             _promptStyle.normal.textColor = new Color(InkDim.r, InkDim.g, InkDim.b, alpha);
-            var promptRect = new Rect(0, cy + 120, Screen.width, 30);
+            var promptRect = new Rect(0, cy + 180, Screen.width, 30);
             GUI.Label(promptRect, "(press any key)", _promptStyle);
         }
 
