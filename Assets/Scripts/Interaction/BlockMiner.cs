@@ -37,6 +37,12 @@ namespace MunCraft.Interaction
         ChunkRenderer _miningRenderer;
         float _miningProgress;
         float _miningTime;
+        int _lastFlashSegment;
+
+        AudioClip[] _hitClips;
+        AudioSource[] _hitPool;
+        int _hitPoolHead;
+        const int HitPoolSize = 16;
 
         // Highlight overlay (only used when targeting, not mining)
         GameObject _highlightObj;
@@ -50,6 +56,20 @@ namespace MunCraft.Interaction
             _camera = camera;
             _inventory = inventory;
             CreateHighlight();
+            SetupHitAudio();
+        }
+
+        void SetupHitAudio()
+        {
+            _hitClips = Resources.LoadAll<AudioClip>("Game/Hits");
+            _hitPool = new AudioSource[HitPoolSize];
+            for (int i = 0; i < HitPoolSize; i++)
+            {
+                var src = gameObject.AddComponent<AudioSource>();
+                src.playOnAwake = false;
+                src.spatialBlend = 0f;
+                _hitPool[i] = src;
+            }
         }
 
         void Update()
@@ -84,10 +104,18 @@ namespace MunCraft.Interaction
                 {
                     var b = _miningBlock.Value;
                     var minedType = _chunkManager.GetBlock(b);
+                    PlayCollectionHit(minedType);
                     StopMining(); // restore colors first
                     _chunkManager.SetBlock(b, BlockType.Air); // then destroy
                     _inventory?.AddBlock(minedType);
                     return;
+                }
+
+                int segment = Mathf.Clamp(Mathf.FloorToInt(_miningProgress * FlashCount), 0, FlashCount - 1);
+                if (segment != _lastFlashSegment)
+                {
+                    PlayHit(_chunkManager.GetBlock(_miningBlock.Value), false);
+                    _lastFlashSegment = segment;
                 }
 
                 ApplyFlashState();
@@ -104,6 +132,7 @@ namespace MunCraft.Interaction
             int picks = CraftingState.Instance != null ? CraftingState.Instance.PickCount : 0;
             _miningTime = baseTime / (1f + 0.5f * picks);
             _miningProgress = 0f;
+            _lastFlashSegment = -1;
 
             var chunkCoord = addr.GetChunkCoord(Chunk.Size);
             _miningRenderer = ChunkRendererRegistry.Get(chunkCoord);
@@ -117,6 +146,53 @@ namespace MunCraft.Interaction
             _miningRenderer = null;
             _miningProgress = 0f;
             _miningTime = 0f;
+            _lastFlashSegment = -1;
+        }
+
+        // Map mining time to "hardness" 0..1, then to pitch and volume so weaker
+        // materials sound duller and quieter, harder ones brighter and fuller.
+        static (float pitch, float volume) GetHitParams(BlockType type)
+        {
+            float t = type.GetMiningTime();
+            float hardness = Mathf.InverseLerp(0.4f, 3.0f, t);
+            float pitch = Mathf.Lerp(0.75f, 1.05f, hardness);
+            float volume = Mathf.Lerp(0.45f, 0.9f, hardness);
+            return (pitch, volume);
+        }
+
+        void PlayHit(BlockType type, bool collection)
+        {
+            if (_hitClips == null || _hitClips.Length == 0 || _hitPool == null) return;
+            var (pitch, volume) = GetHitParams(type);
+            if (collection) volume = Mathf.Min(volume * 1.6f, 1f);
+
+            var src = _hitPool[_hitPoolHead];
+            _hitPoolHead = (_hitPoolHead + 1) % _hitPool.Length;
+            src.clip = _hitClips[Random.Range(0, _hitClips.Length)];
+            src.pitch = pitch;
+            src.volume = volume;
+            src.Play();
+        }
+
+        void PlayCollectionHit(BlockType type)
+        {
+            PlayHit(type, true);
+            StartCoroutine(EchoCollection(type));
+        }
+
+        System.Collections.IEnumerator EchoCollection(BlockType type)
+        {
+            yield return new WaitForSeconds(0.08f);
+            if (_hitClips == null || _hitClips.Length == 0 || _hitPool == null) yield break;
+            var (pitch, volume) = GetHitParams(type);
+            volume = Mathf.Min(volume * 0.8f, 1f);
+
+            var src = _hitPool[_hitPoolHead];
+            _hitPoolHead = (_hitPoolHead + 1) % _hitPool.Length;
+            src.clip = _hitClips[Random.Range(0, _hitClips.Length)];
+            src.pitch = pitch * 0.92f; // a touch lower for the tail
+            src.volume = volume;
+            src.Play();
         }
 
         /// <summary>
