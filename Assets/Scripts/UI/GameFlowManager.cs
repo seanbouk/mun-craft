@@ -26,8 +26,8 @@ namespace MunCraft.UI
         Texture2D _titleImage;
         Material _titleFadeMat;
         float _titleStartTime;
-        const float TitleFadeDuration = 5f;
-        const float TitleMaxDelay = 20f;
+        const float TitleFadeDuration = 10f;
+        const float TitleMaxDelay = 40f;
         Camera _uiCamera; // fallback camera for title/level-select screens
         GUIStyle _titleStyle;
         GUIStyle _subtitleStyle;
@@ -40,6 +40,12 @@ namespace MunCraft.UI
         float _inputCooldown; // suppress input briefly after state transitions
         int _loadingMapId = -1; // -1 = not loading, >=0 = loading that map
         int _loadingFrames;     // count down frames before actually loading
+
+        AudioSource _titleAudio;
+        AudioClip _titleClip;
+        FlowState _lastFlow;
+        float _audioFadeOutRemaining;
+        const float AudioFadeOutDuration = 0.15f;
 
         struct Star { public float X, Y, Brightness; }
         Star[] _stars;
@@ -68,6 +74,15 @@ namespace MunCraft.UI
             // Create a simple camera for title/level-select (destroyed when game loads)
             CreateUICamera();
 
+            _titleClip = Resources.Load<AudioClip>("Title/title");
+            _titleAudio = gameObject.AddComponent<AudioSource>();
+            _titleAudio.clip = _titleClip;
+            _titleAudio.loop = false;
+            _titleAudio.playOnAwake = false;
+            _titleAudio.spatialBlend = 0f;
+
+            // Force the first Update to detect a transition into Title and Play.
+            _lastFlow = FlowState.LevelSelect;
             GameState.CurrentFlow = FlowState.Title;
             Time.timeScale = 1f;
             Cursor.lockState = CursorLockMode.None;
@@ -106,6 +121,8 @@ namespace MunCraft.UI
         void Update()
         {
             _promptPulse += Time.unscaledDeltaTime * 2f;
+
+            TrackTitleAudio();
 
             if (GameState.CurrentFlow != FlowState.Playing)
                 UpdateStars(Time.unscaledDeltaTime);
@@ -211,6 +228,46 @@ namespace MunCraft.UI
                 DrawLevelSelect();
         }
 
+        void TrackTitleAudio()
+        {
+            // Drive any in-progress fade-out
+            if (_audioFadeOutRemaining > 0f && _titleAudio != null)
+            {
+                _audioFadeOutRemaining -= Time.unscaledDeltaTime;
+                if (_audioFadeOutRemaining <= 0f)
+                {
+                    _titleAudio.Stop();
+                    _titleAudio.volume = 1f;
+                    _audioFadeOutRemaining = 0f;
+                }
+                else
+                {
+                    _titleAudio.volume = _audioFadeOutRemaining / AudioFadeOutDuration;
+                }
+            }
+
+            var current = GameState.CurrentFlow;
+            if (_lastFlow == current) return;
+
+            if (current == FlowState.Title)
+            {
+                _titleStartTime = Time.unscaledTime;
+                if (_titleAudio != null && _titleClip != null)
+                {
+                    _audioFadeOutRemaining = 0f;
+                    _titleAudio.volume = 1f;
+                    _titleAudio.Stop();
+                    _titleAudio.Play();
+                }
+            }
+            else if (_lastFlow == FlowState.Title && _titleAudio != null && _titleAudio.isPlaying)
+            {
+                // Begin a short fade-out instead of a hard Stop (avoids click).
+                _audioFadeOutRemaining = AudioFadeOutDuration;
+            }
+            _lastFlow = current;
+        }
+
         void EnsureBgGradient()
         {
             if (_bgGradient != null) return;
@@ -223,12 +280,12 @@ namespace MunCraft.UI
             };
             var mustard = new Color(0.20f, 0.16f, 0.04f, 1f);
             // Texture y=0 → bottom of screen (mustard), y=H-1 → top (black).
-            // Black takes over by 2/3 of the way up from the bottom.
+            // Curve so half-way up is already 75% black: pow(t, 0.415).
             for (int i = 0; i < H; i++)
             {
                 float t = i / (float)(H - 1); // 0 at bottom, 1 at top
-                float mustardAmount = 1f - Mathf.Clamp01(t / (2f / 3f));
-                _bgGradient.SetPixel(0, i, Color.Lerp(Color.black, mustard, mustardAmount));
+                float blackAmount = Mathf.Pow(t, 0.415f);
+                _bgGradient.SetPixel(0, i, Color.Lerp(mustard, Color.black, blackAmount));
             }
             _bgGradient.Apply();
         }
