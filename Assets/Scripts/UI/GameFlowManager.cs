@@ -22,6 +22,7 @@ namespace MunCraft.UI
         static readonly Color BtnDisabled = new Color(0.04f, 0.10f, 0.16f, 1f);
 
         Texture2D _pixel;
+        Texture2D _bgGradient;
         Texture2D _titleImage;
         Material _titleFadeMat;
         float _titleStartTime;
@@ -77,6 +78,7 @@ namespace MunCraft.UI
         {
             if (Instance == this) Instance = null;
             if (_pixel != null) Destroy(_pixel);
+            if (_bgGradient != null) Destroy(_bgGradient);
             if (_titleFadeMat != null) Destroy(_titleFadeMat);
             DestroyUICamera();
         }
@@ -199,13 +201,36 @@ namespace MunCraft.UI
             EnsureStyles();
 
             // Full-screen background
-            Solid(new Rect(0, 0, Screen.width, Screen.height), Bg);
+            EnsureBgGradient();
+            GUI.DrawTexture(new Rect(0, 0, Screen.width, Screen.height), _bgGradient);
             DrawStars();
 
             if (GameState.CurrentFlow == FlowState.Title)
                 DrawTitle();
             else if (GameState.CurrentFlow == FlowState.LevelSelect)
                 DrawLevelSelect();
+        }
+
+        void EnsureBgGradient()
+        {
+            if (_bgGradient != null) return;
+            const int H = 128;
+            _bgGradient = new Texture2D(1, H, TextureFormat.RGBA32, false)
+            {
+                wrapMode = TextureWrapMode.Clamp,
+                filterMode = FilterMode.Bilinear,
+                hideFlags = HideFlags.HideAndDontSave,
+            };
+            var mustard = new Color(0.20f, 0.16f, 0.04f, 1f);
+            // Texture y=0 → bottom of screen (mustard), y=H-1 → top (black).
+            // Black takes over by 2/3 of the way up from the bottom.
+            for (int i = 0; i < H; i++)
+            {
+                float t = i / (float)(H - 1); // 0 at bottom, 1 at top
+                float mustardAmount = 1f - Mathf.Clamp01(t / (2f / 3f));
+                _bgGradient.SetPixel(0, i, Color.Lerp(Color.black, mustard, mustardAmount));
+            }
+            _bgGradient.Apply();
         }
 
         void InitStars()
