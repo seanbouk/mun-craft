@@ -47,13 +47,25 @@ Shader "MunCraft/TitleFade"
                 return o;
             }
 
+            float LinearToSRGB(float v)
+            {
+                return v <= 0.0031308 ? 12.92 * v : 1.055 * pow(v, 1.0/2.4) - 0.055;
+            }
+
             float4 frag(v2f i) : SV_Target
             {
                 float4 c = tex2D(_MainTex, i.uv);
-                float brightness = (c.r + c.g + c.b) / 3.0;
+                // Threshold in sRGB space (0x1a/255 ≈ 0.10) so hex values are intuitive.
+                float r = LinearToSRGB(c.r);
+                float g = LinearToSRGB(c.g);
+                float b = LinearToSRGB(c.b);
+                float brightness = (r + g + b) / 3.0;
+                // Soft cutoff: full at 0.10, fades to nothing by 0.05 (preserves AA on the edge).
+                float threshMask = smoothstep(0.05, 0.10, brightness);
+                if (threshMask <= 0) return float4(0, 0, 0, 0);
                 float delay = (1.0 - brightness) * _MaxDelay;
                 float progress = saturate((_Elapsed - delay) / _FadeDuration);
-                return float4(1, 1, 1, c.a * progress);
+                return float4(1, 1, 1, c.a * progress * threshMask);
             }
             ENDCG
         }
