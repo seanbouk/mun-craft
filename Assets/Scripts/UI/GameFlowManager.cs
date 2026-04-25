@@ -43,9 +43,14 @@ namespace MunCraft.UI
 
         AudioSource _titleAudio;
         AudioClip _titleClip;
+        AudioSource _gameAudio;
+        AudioClip _gameClip;
         FlowState _lastFlow;
-        float _audioFadeOutRemaining;
+        float _titleAudioFadeOutRemaining;
+        float _gameAudioFadeOutRemaining;
         const float AudioFadeOutDuration = 0.15f;
+        const float TitleMusicVolume = 1f;
+        const float GameMusicVolume = 0.5f;
 
         struct Star { public float X, Y, Brightness; }
         Star[] _stars;
@@ -56,7 +61,16 @@ namespace MunCraft.UI
 
         public static GameFlowManager Instance { get; private set; }
 
-        void Awake() { Instance = this; }
+        void Awake()
+        {
+            Instance = this;
+            // Single, persistent AudioListener: cameras come and go (Main Camera
+            // gets destroyed when entering a map, PlayerCamera when leaving), so
+            // pin the listener to this manager which lives through every state.
+            foreach (var existing in FindObjectsByType<AudioListener>())
+                Destroy(existing);
+            gameObject.AddComponent<AudioListener>();
+        }
 
         void Start()
         {
@@ -80,6 +94,13 @@ namespace MunCraft.UI
             _titleAudio.loop = false;
             _titleAudio.playOnAwake = false;
             _titleAudio.spatialBlend = 0f;
+
+            _gameClip = Resources.Load<AudioClip>("Game/music");
+            _gameAudio = gameObject.AddComponent<AudioSource>();
+            _gameAudio.clip = _gameClip;
+            _gameAudio.loop = true;
+            _gameAudio.playOnAwake = false;
+            _gameAudio.spatialBlend = 0f;
 
             // Force the first Update to detect a transition into Title and Play.
             _lastFlow = FlowState.LevelSelect;
@@ -230,42 +251,62 @@ namespace MunCraft.UI
 
         void TrackTitleAudio()
         {
-            // Drive any in-progress fade-out
-            if (_audioFadeOutRemaining > 0f && _titleAudio != null)
-            {
-                _audioFadeOutRemaining -= Time.unscaledDeltaTime;
-                if (_audioFadeOutRemaining <= 0f)
-                {
-                    _titleAudio.Stop();
-                    _titleAudio.volume = 1f;
-                    _audioFadeOutRemaining = 0f;
-                }
-                else
-                {
-                    _titleAudio.volume = _audioFadeOutRemaining / AudioFadeOutDuration;
-                }
-            }
+            DriveFadeOut(_titleAudio, ref _titleAudioFadeOutRemaining, TitleMusicVolume);
+            DriveFadeOut(_gameAudio, ref _gameAudioFadeOutRemaining, GameMusicVolume);
 
             var current = GameState.CurrentFlow;
             if (_lastFlow == current) return;
 
+            bool wasInGame = _lastFlow == FlowState.LevelSelect || _lastFlow == FlowState.Playing;
+            bool nowInGame = current == FlowState.LevelSelect || current == FlowState.Playing;
+
+            // Title music: play on entry to Title, fade on exit.
             if (current == FlowState.Title)
             {
                 _titleStartTime = Time.unscaledTime;
                 if (_titleAudio != null && _titleClip != null)
                 {
-                    _audioFadeOutRemaining = 0f;
-                    _titleAudio.volume = 1f;
+                    _titleAudioFadeOutRemaining = 0f;
+                    _titleAudio.volume = TitleMusicVolume;
                     _titleAudio.Stop();
                     _titleAudio.Play();
                 }
             }
             else if (_lastFlow == FlowState.Title && _titleAudio != null && _titleAudio.isPlaying)
             {
-                // Begin a short fade-out instead of a hard Stop (avoids click).
-                _audioFadeOutRemaining = AudioFadeOutDuration;
+                _titleAudioFadeOutRemaining = AudioFadeOutDuration;
             }
+
+            // Game music: play continuously across LevelSelect <-> Playing,
+            // start on first entry, fade on return to Title.
+            if (nowInGame && !wasInGame && _gameAudio != null && _gameClip != null)
+            {
+                _gameAudioFadeOutRemaining = 0f;
+                _gameAudio.volume = GameMusicVolume;
+                if (!_gameAudio.isPlaying) _gameAudio.Play();
+            }
+            else if (wasInGame && !nowInGame && _gameAudio != null && _gameAudio.isPlaying)
+            {
+                _gameAudioFadeOutRemaining = AudioFadeOutDuration;
+            }
+
             _lastFlow = current;
+        }
+
+        void DriveFadeOut(AudioSource src, ref float remaining, float baseVolume)
+        {
+            if (remaining <= 0f || src == null) return;
+            remaining -= Time.unscaledDeltaTime;
+            if (remaining <= 0f)
+            {
+                src.Stop();
+                src.volume = baseVolume;
+                remaining = 0f;
+            }
+            else
+            {
+                src.volume = baseVolume * (remaining / AudioFadeOutDuration);
+            }
         }
 
         void EnsureBgGradient()
