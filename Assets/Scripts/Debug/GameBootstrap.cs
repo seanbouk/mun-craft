@@ -191,7 +191,8 @@ namespace MunCraft.Debug
             _streamingManager = null;
             _chunkManager = null;
             _gravityField = null;
-            _inventory = null;
+            // _inventory deliberately preserved — it lives on the persistent
+            // _inventoryObj across maps; nulling it broke per-map mining pickup.
 
             ChunkRendererRegistry.Clear();
             GameState.MenuOpen = false;
