@@ -21,6 +21,12 @@ namespace MunCraft.EditorTools
         const string PagesOutput = "docs";
         const string MainScene = "Assets/Scenes/SampleScene.unity";
 
+        // Pages gets a minimal fill-the-viewport template (Assets/WebGLTemplates/MunCraft).
+        // Local / itch builds keep the stock Unity template with the fixed-size canvas
+        // and fullscreen button, since itch wraps the build in its own iframe chrome.
+        const string PagesTemplate = "PROJECT:MunCraft";
+        const string DefaultTemplate = "APPLICATION:Default";
+
         [MenuItem("MunCraft/Configure WebGL Settings")]
         public static void ConfigureWebGL()
         {
@@ -121,6 +127,8 @@ namespace MunCraft.EditorTools
 
             if (Directory.Exists(outputPath))
                 Directory.Delete(outputPath, recursive: true);
+
+            PlayerSettings.WebGL.template = isPages ? PagesTemplate : DefaultTemplate;
 
             var options = new BuildPlayerOptions
             {
